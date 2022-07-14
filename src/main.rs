@@ -1,43 +1,38 @@
+#![feature(portable_simd, test, array_chunks, core_intrinsics)]
+#[cfg(target_arch = "x86_64")]
 use image::io::Reader as ImageReader;
 use std::env;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::io::Cursor;
-use std::path::Path;
+
+use crate::qoi::{img_to_qoi, open_file};
+
+extern crate test;
+mod qoi;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);
 
     let filename = &args[1];
+    let image = open_file(filename);
+    img_to_qoi(image);
 
-    let img = ImageReader::open("myimage.png")?.decode()?;
-    let img2 = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()?
-        .decode()?;
-    // Create a path to the desired file
-    let path = Path::new(filename);
-    let display = path.display();
+}
 
-    // Open the path in read-only mode, returns `io::Result<File>`
-    let file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
-        Ok(file) => file,
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::DynamicImage;
+    use test::Bencher;
 
-    let mut reader = BufReader::new(file);
-    let mut buffer = Vec::new();
-
-    // Read file into vector.
-    match reader.read_to_end(&mut buffer) {
-        Ok(_) => {}
-        Err(why) => panic!("Oh heck! {:?}", why),
+    #[bench]
+    fn bencher(b: &mut Bencher) {
+        let image: DynamicImage = open_file("test/thonk.png");
+        b.iter(|| {
+            println!("Get Image");
+            let image = test::black_box(image.to_owned());
+            println!("Do thing");
+            img_to_qoi(image);
+            println!("Thing done");
+        });
     }
-
-    // Read.
-    for value in buffer {
-        println!("BYTE: {}", value);
-    }
-    // `file` goes out of scope, and gets closed
 }

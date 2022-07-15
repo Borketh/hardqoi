@@ -5,6 +5,8 @@ use std::env;
 
 use crate::qoi::{img_to_qoi, open_file};
 
+#[macro_use]
+extern crate lazy_static;
 extern crate test;
 mod qoi;
 

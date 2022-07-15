@@ -1,21 +1,18 @@
-static MOD_64: u128 = 0x003f003f003f003f003f003f003f003fu128;
-static HASH_NUMS: u128 = 0x0b0705030b0705030b0705030b070503u128;
-
 #[cfg(target_feature = "ssse3")]
 pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
-    // this wraps the "unsafe" enclosed function to make the function pointer type equivalent
-    // to other implementations of HASHES_RGBA
+    // this wraps the "unsafe" enclosed function to make the function pointer type
+    // equivalent to other implementations of hashes_rgba
     unsafe { hashes_rgba_ssse3_impl(bytes, count) }
 }
 
-#[inline]
+#[inline] // because it's wrapped by the above function, a nested call isn't useful
 #[cfg(target_feature = "ssse3")]
 unsafe fn hashes_rgba_ssse3_impl(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     use std::arch::asm;
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::__m128i;
     #[cfg(target_arch = "x86")]
     use std::arch::x86::__m128i;
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::__m128i;
 
     let safe_iterations = count / 16 + 1;
     let safe_alloc_bytes = safe_iterations * 16;
@@ -74,13 +71,13 @@ unsafe fn hashes_rgba_ssse3_impl(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
         pixels_ptr = in(reg) pixels_ptr,
         hashes_ptr = in(reg) hashes_ptr,
 
-        // probably best to let these be set by the compiler
-        a = out(xmm_reg) _,
-        b = out(xmm_reg) _,
-        c = out(xmm_reg) _,
-        d = out(xmm_reg) _,
-        out("xmm0") _, // reserved for hashing numbers
-        out("xmm1") _, // reserved for mod 64 mask
+            // probably best to let these be assigned by the assembler
+            a = out(xmm_reg) _,
+            b = out(xmm_reg) _,
+            c = out(xmm_reg) _,
+            d = out(xmm_reg) _,
+            out("xmm0") _,          // reserved for hashing numbers
+            out("xmm1") _,          // reserved for mod 64 mask
 
         options(preserves_flags)
         );

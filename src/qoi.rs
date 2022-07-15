@@ -1,11 +1,13 @@
-//use crate::ImageReader;
 use image::{ColorType, DynamicImage, GenericImageView};
+use std::ops::{Add, Div};
 
 use image::io::Reader;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-
+// cargo-asm has spoiled my perceptions of how smart the compiler really is
+// hence my micromanaging exactly which instructions are called when I can
+// I intend to make other platform-specific implementations
 #[cfg_attr(target_feature = "ssse3", path = "hashes/ssse3.rs")]
 #[cfg_attr(not(target_feature = "ssse3"), path = "hashes/slow.rs")]
 mod hashes;
@@ -56,20 +58,25 @@ fn raw_to_qoi(bytes: Vec<u8>, colour_type: ColorType, count: usize) {
                 hashes.get(1).expect("Hash not found")
             );
             assert_eq!(*hashes.get(0).unwrap(), 54u8);
+
+            let mut times: Vec<Duration> = Vec::with_capacity(32);
+
+            for _ in 0..128 {
+                let timekeeper = Instant::now();
+                let hashes = hashes_rgba(&bytes, count);
+                let duration = timekeeper.elapsed();
+                times.push(duration);
+
+                println!("{:?}: {} hashes", duration, hashes.len());
+            }
+            let mut total_duration: Duration = Duration::from_secs(0);
+            for duration in times {
+                total_duration = total_duration.add(duration);
+            }
+            println!("Average time: {:?}", total_duration.div(128));
         }
         _ => {
             panic!("The {colour_type:?} format is not supported by the QOI format (yet)")
         }
     }
 }
-
-/*
-static HASHES_RGBA: fn(&Vec<u8>, usize) -> Vec<u8> = if cfg!(target_feature = "ssse3") {
-    hashes_rgba_ssse3
-} else {
-    hashes_rgba_any
-};
-*/
-
-
-

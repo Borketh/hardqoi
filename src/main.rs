@@ -1,23 +1,15 @@
-#![feature(portable_simd, test, array_chunks, core_intrinsics)]
-#[cfg(target_arch = "x86_64")]
-use image::io::Reader as ImageReader;
-use std::env;
+#![feature(slice_as_chunks)]
 
 use crate::qoi::{img_to_qoi, open_file};
-
-#[macro_use]
-extern crate lazy_static;
-extern crate test;
 mod qoi;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
     println!("{:?}", args);
 
     let filename = &args[1];
     let image = open_file(filename);
     img_to_qoi(image);
-
 }
 
 #[cfg(test)]

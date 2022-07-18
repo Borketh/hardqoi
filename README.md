@@ -1,7 +1,7 @@
 # QOI on Rust with SIMD
 
 A future implementation of the Quite Ok Image Format created by Dominic Szablewski
-This implementation aims to leverage the power of Same-Instruction-Multiple-Data (SIMD) operations for the fastest possible operation of the algorithm. [This code from the initial commits](https://github.com/AstroFloof/qoi-rust-simd/blob/98f0fde8d2568d46a5c6a86ae144d1b07206b789/src/qoi.rs#L82-L177) takes about 90 ms* to take the hashes of one of the first images from James Webb. That image weighs in at about 153.5 Megapixels, so not an insignificant amount by any means.
+This implementation aims to leverage the power of Same-Instruction-Multiple-Data (SIMD) operations for the fastest possible operation of the algorithm. [This code from the initial commits](https://github.com/AstroFloof/qoi-rust-simd/blob/98f0fde8d2568d46a5c6a86ae144d1b07206b789/src/qoi.rs#L82-L177) takes about 90 ms* vs the naive 580 ms to take the hashes of one of the first images from James Webb. That image weighs in at about 153.5 Megapixels, so not an insignificant amount by any means. It has an even greater effect on smaller images, too. For a 128x128 image the SIMD implementation takes 3-4 µs while the naive takes about 63 µs. This is more than a 22x speedup! Of course, that's just for the hashing. The rest will come with its own challenges.
 
 I am using this as a way to teach myself Rust, and apparently assembly too, since I was dissatisfied with the options I had with the current experimental SIMD API on the nightly branch. This project can only be used on the nightly branch of Rust, since it uses a whole whack of unstable features.
 

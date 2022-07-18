@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 image = "0.24.2"
 
+[features]
+use_simd = []
+
 [[bin]]
 name = "rustyqoi"
 path = "src/main.rs"

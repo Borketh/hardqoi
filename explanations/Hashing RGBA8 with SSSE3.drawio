@@ -2240,7 +2240,7 @@
         <mxCell id="qA27IrLWc9yDiEiHnhR5-1014" value="16 Hashes from 64 bytes of RGBA" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Courier New;fontSize=25;strokeColor=#000000;fillColor=#FFFFFF;" parent="1" vertex="1">
           <mxGeometry x="2120" y="1240" width="480" height="40" as="geometry" />
         </mxCell>
-        <UserObject label="&lt;br&gt;Graphic created by &lt;a href=&quot;https://github.com/AstroFloof/qoi-rust-simd/blob/master/README.md&quot;&gt;AstroFloof&lt;/a&gt;&amp;nbsp;using diagrams.net.&lt;br&gt;Licensed under the MIT License.&lt;br&gt;The QOI algorithm is in the Public Domain (CC0)" link="https://github.com/AstroFloof/qoi-rust-simd/blob/master/explanations/SIMDQOIHASH.drawio" id="qA27IrLWc9yDiEiHnhR5-1016">
+        <UserObject label="&lt;br&gt;Graphic created by &lt;a href=&quot;https://github.com/AstroFloof/qoi-rust-simd/blob/master/README.md&quot;&gt;AstroFloof&lt;/a&gt;&amp;nbsp;using diagrams.net.&lt;br&gt;Licensed under the MIT License.&lt;br&gt;The QOI algorithm is in the Public Domain (CC0)" link="https://github.com/AstroFloof/qoi-rust-simd/blob/master/explanations/Hashing RGBA8 with SSSE3.drawio" id="qA27IrLWc9yDiEiHnhR5-1016">
           <mxCell style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=bottom;rounded=0;fontFamily=Helvetica;fontSize=15;fontStyle=1;html=1;" parent="1" vertex="1">
             <mxGeometry x="2720" y="1100" width="560" height="180" as="geometry" />
           </mxCell>

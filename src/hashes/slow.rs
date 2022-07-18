@@ -6,12 +6,15 @@ pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     // but the size should be set after writing everything.
     let mut hashes: Vec<u8> = Vec::with_capacity(safe_alloc_bytes);
 
-    let pixels = bytes.as_chunks::<4>().0;
+    let pixels: &Vec<[u8; 4]> = unsafe { &*(bytes as *const Vec<u8> as *const Vec<[u8; 4]>) };
 
     for i in 0..count {
-        let [r, g, b, a] = pixels.get(i).unwrap();
-        let hash = ((r * 3u8) + (g * 5u8) + (b * 7u8) + (a * 11u8)) % 64u8;
-        hashes.push(hash);
+
+        let slice: [u8; 4] = pixels[i];
+
+        hashes.push(((slice[0] * 3) + (slice[1] * 5) + (slice[2] * 7) + (slice[3] * 11)) & 0b00111111u8);
     }
     return hashes;
 }
+
+

@@ -2,8 +2,8 @@ use std::ops::{Add, Div};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use image::{ColorType, DynamicImage, GenericImageView};
 use image::io::Reader;
+use image::{ColorType, DynamicImage, GenericImageView};
 
 use hashes::hashes_rgba;
 
@@ -11,8 +11,14 @@ use hashes::hashes_rgba;
 // hence my micromanaging exactly which instructions are called at critical parts of the code.
 // My only regret is that it took longer, but the benefits are really good!
 // I intend to make other platform-specific implementations once the base and x86 are finished.
-#[cfg_attr(all(feature = "use_simd", target_feature = "ssse3"), path = "hashes/ssse3.rs")]
-#[cfg_attr(any(not(feature = "use_simd"), not(target_feature = "ssse3")), path = "hashes/slow.rs")]
+#[cfg_attr(
+    all(feature = "use_simd", target_feature = "ssse3"),
+    path = "hashes/ssse3.rs"
+)]
+#[cfg_attr(
+    any(not(feature = "use_simd"), not(target_feature = "ssse3")),
+    path = "hashes/slow.rs"
+)]
 mod hashes;
 
 pub fn open_file(path: &str) -> DynamicImage {

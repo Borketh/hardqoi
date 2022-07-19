@@ -12,31 +12,27 @@ pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
 #[cfg(target_feature = "ssse3")]
 unsafe fn hashes_rgba_ssse3_impl(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     use std::arch::asm;
-    #[cfg(target_arch = "x86")]
-    use std::arch::x86::__m128i;
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::__m128i;
 
     let safe_iterations = count / 16 + 1;
     let safe_alloc_bytes = safe_iterations * 16;
-    // Allocate 1-16 bytes extra for the hashes vector, so that writing the final __m128i doesn't
+    // Allocate 1-16 bytes extra for the hashes vector, so that writing the final xmm doesn't
     // overwrite anything that comes after it and corrupt anything. The capacity should not change,
     // but the size should be set after writing everything.
     let mut hashes: Vec<u8> = Vec::with_capacity(safe_alloc_bytes);
 
-    let mut pixels_ptr: *const _ = bytes.as_ptr() as *const __m128i;
-    let mut hashes_ptr: *mut _ = hashes.as_mut_ptr() as *mut __m128i;
+    let mut pixels_ptr = bytes.as_ptr();
+    let mut hashes_ptr = hashes.as_mut_ptr();
 
     // reserve xmm0 and xmm1 for quick access of the hashing numbers and mod mask
     asm!(
         "movddup xmm0, [{hash_multipliers}]",
         "movddup xmm1, [{mod_64_mask}]",
-        hash_multipliers = in(reg) &HASHING_NUMS_RGBA as *const u64,
-        mod_64_mask = in(reg) &MOD64MASK as *const u64,
+        hash_multipliers = in(reg) &HASHING_NUMS_RGBA,
+        mod_64_mask = in(reg) &MOD64MASK,
 
         out("xmm0") _,
         out("xmm1") _,
-        options(nomem, preserves_flags, nostack)
+        options(readonly, preserves_flags, nostack)
     );
 
     for _ in 0..safe_iterations {
@@ -81,7 +77,7 @@ unsafe fn hashes_rgba_ssse3_impl(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
             options(preserves_flags, nostack)
         );
     }
-
+    asm!("sfence"); // to tell other cores where all that movntdq'd stuff came from
     hashes.set_len(count);
 
     return hashes;

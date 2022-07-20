@@ -1,5 +1,3 @@
-#![feature(slice_as_chunks)]
-
 use qoi::{img_to_qoi, open_file};
 mod qoi;
 

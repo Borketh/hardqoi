@@ -5,7 +5,7 @@ static HASHING_NUMS_RGBA: u64 = 0x0b0705030b070503u64;
 pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     // this wraps the "unsafe" enclosed function to make the function pointer type
     // equivalent to other implementations of hashes_rgba
-    return unsafe { hashes_rgba_ssse3_impl(bytes, count) }
+    return unsafe { hashes_rgba_ssse3_impl(bytes, count) };
 }
 
 #[inline] // because it's wrapped by the above function, a nested call isn't useful

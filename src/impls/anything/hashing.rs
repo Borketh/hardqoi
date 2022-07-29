@@ -1,10 +1,9 @@
-extern crate bytemuck;
 use bytemuck::checked::cast_slice;
 
 pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     let mut hashes: Vec<u8> = Vec::with_capacity(count);
 
-    let pixels = cast_slice::<u8, [u8; 4]>(bytes);
+    let pixels: &[[u8; 4]] = cast_slice::<u8, [u8; 4]>(bytes);
 
     for i in 0..count {
         hashes.push(

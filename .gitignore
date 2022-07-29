@@ -2,3 +2,4 @@
 /.idea
 Cargo.lock
 /test/stephansquintet-jameswebb-giant.png
+/test/*.qoi

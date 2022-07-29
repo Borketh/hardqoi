@@ -1,2 +1,2 @@
-pub mod hashing;
 pub mod encoding;
+pub mod hashing;

@@ -10,7 +10,7 @@ bytemuck = "1.10.0"
 image = "0.24.2"
 
 [features]
-default = ["use_std"]
+default = []
 use_std = []
 use_simd = []
 

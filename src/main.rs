@@ -5,7 +5,7 @@ use std::path::Path;
 use image::{io::Reader, DynamicImage, ImageFormat};
 
 use crate::common::QOIHeader;
-use crate::qoi::{encoding::encode, write_qoi};
+use crate::qoi::{decoding::decode, encoding::encode, write_qoi};
 pub use qoi::common;
 
 pub mod qoi;
@@ -38,7 +38,7 @@ pub fn open_file(path: &str) -> (ImageFormat, DynamicImage) {
 }
 
 fn img_to_qoi(mut img: DynamicImage, filename: &str) {
-    let meta = QOIHeader::new(&img);
+    let meta = QOIHeader::from(&img);
     img = DynamicImage::ImageRgba8(img.to_rgba8());
     let raw = img.as_bytes().to_vec();
 
@@ -48,6 +48,21 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
         Err((found, expected)) => panic!(
             "Expected {} pixels, found {} pixels instead",
             expected, found
+        ),
+    };
+    let mut decoded: Vec<[u8; 4]> = Vec::with_capacity(raw.len() / 4);
+    match decode(&qoi_data, &mut decoded) {
+        Ok(()) => {
+            let rawpx = bytemuck::cast_slice::<u8, [u8; 4]>(&raw);
+            let decodedpx = decoded.as_slice();
+            assert_eq!(rawpx.len(), decodedpx.len(), "Input and output sizes do not match!");
+            for i in 0..decoded.len() {
+                assert_eq!(rawpx[i], decodedpx[i], "There is a discrepancy between the input and the decoded output at position {}: Expected: {:?}, Got: {:?}", i, rawpx[i], decodedpx[i]);
+            }
+        }
+        Err((read, expected)) => panic!(
+            "Expected {} pixels, found {} pixels instead",
+            expected, read
         ),
     }
 }

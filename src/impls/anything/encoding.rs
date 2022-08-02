@@ -28,7 +28,7 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
     let hashes: Vec<u8> = hashing::hashes_rgba(raw, pixels.len());
 
     let mut prev_pixel: PIXEL = BLACK;
-    let mut history_by_hash: [PIXEL; 64] = [ZERO_PIXEL; 64];
+    let mut hash_indexed_array: [PIXEL; 64] = [ZERO_PIXEL; 64];
     let pixel_run_counter: &mut u8 = &mut 0u8;
     let mut px_written = 0usize;
 
@@ -36,7 +36,7 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
         let pixel = PIXEL::from(channels);
 
         let hash = *hashes.get(i).unwrap();
-        let pixel_of_same_hash = hash_swap(&mut history_by_hash, pixel, hash);
+        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hash);
 
         if pixel == prev_pixel {
             *pixel_run_counter += 1u8;

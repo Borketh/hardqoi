@@ -77,7 +77,7 @@ unsafe fn hashes_rgba_ssse3_impl(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
             options(preserves_flags, nostack)
         );
     }
-    asm!("sfence"); // to tell other cores where all that movntdq'd stuff came from
+    asm!("sfence"); // to tell other cores where all that movntdq'd stuff came from, which shouldn't affect anything
     hashes.set_len(count);
 
     return hashes;

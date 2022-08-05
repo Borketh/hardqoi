@@ -1,6 +1,8 @@
 extern crate bytemuck;
 
+use std::ops::Div;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use image::{io::Reader, DynamicImage, ImageFormat};
 
@@ -55,10 +57,32 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
         Ok(()) => {
             let rawpx = bytemuck::cast_slice::<u8, [u8; 4]>(&raw);
             let decodedpx = decoded.as_slice();
-            assert_eq!(rawpx.len(), decodedpx.len(), "Input and output sizes do not match!");
+            assert_eq!(
+                rawpx.len(),
+                decodedpx.len(),
+                "Input and output sizes do not match!"
+            );
             for i in 0..decoded.len() {
                 assert_eq!(rawpx[i], decodedpx[i], "There is a discrepancy between the input and the decoded output at position {}: Expected: {:?}, Got: {:?}", i, rawpx[i], decodedpx[i]);
             }
+            println!("Successful trial run, Beginning benchmarking");
+
+            let mut encode_time_sum: Duration = Duration::from_secs(0);
+            let mut decode_time_sum: Duration = Duration::from_secs(0);
+            let iterations = 100;
+
+            for _ in 0..iterations {
+                qoi_data.clear();
+                decoded.clear();
+                let encode_time = Instant::now();
+                encode(&raw, meta, &mut qoi_data).unwrap();
+                encode_time_sum += encode_time.elapsed();
+                let decode_time = Instant::now();
+                decode(&qoi_data, &mut decoded).unwrap();
+                decode_time_sum += decode_time.elapsed();
+            }
+            println!("{:?}", encode_time_sum.div(iterations));
+            println!("{:?}", decode_time_sum.div(iterations));
         }
         Err((read, expected)) => panic!(
             "Expected {} pixels, found {} pixels instead",

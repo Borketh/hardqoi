@@ -34,6 +34,7 @@ pub mod common {
     pub const QOI_OP_RUN: u8 = 0b11_000000_u8;
     pub const END_8: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
 
+    #[derive(Clone, Copy)]
     pub struct QOIHeader {
         pub width: u32,
         pub height: u32,

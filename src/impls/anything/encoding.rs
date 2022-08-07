@@ -1,14 +1,14 @@
 use bytemuck::cast_slice;
-use wrapping_rgba::*;
+use wrap_math_pixel::*;
 
 use crate::common::{
     QOIHeader, END_8, MAGIC_QOIF, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
     QOI_OP_RUN,
 };
-use crate::qoi::hashing;
+use crate::hashing::hashes_rgba;
 
-#[path = "wrapping_rgba.rs"]
-mod wrapping_rgba;
+#[path = "wrap_math_pixel.rs"]
+mod wrap_math_pixel;
 
 pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize, (usize, usize)> {
     buf.extend(MAGIC_QOIF);
@@ -25,7 +25,7 @@ pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize
 
 fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (usize, usize)> {
     let pixels: &[[u8; 4]] = cast_slice::<u8, [u8; 4]>(raw);
-    let hashes: Vec<u8> = hashing::hashes_rgba(raw, pixels.len());
+    let hashes: Vec<u8> = hashes_rgba(pixels);
 
     let mut prev_pixel: PIXEL = BLACK;
     let mut hash_indexed_array: [PIXEL; 64] = [ZERO_PIXEL; 64];
@@ -34,9 +34,7 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
 
     for (i, &channels) in pixels.iter().enumerate() {
         let pixel = PIXEL::from(channels);
-
-        let hash = *hashes.get(i).unwrap();
-        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hash);
+        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hashes[i]);
 
         if pixel == prev_pixel {
             *pixel_run_counter += 1u8;
@@ -54,7 +52,7 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
 
         if pixel == pixel_of_same_hash {
             px_written += 1;
-            write_hash_index(output_buffer, hash);
+            write_hash_index(output_buffer, hashes[i]);
         } else if pixel.a() != prev_pixel.a() {
             px_written += 1;
             write_rgba(output_buffer, pixel);

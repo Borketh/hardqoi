@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 use image::{io::Reader, DynamicImage, ImageFormat};
 
 use crate::common::QOIHeader;
-use crate::qoi::{decoding::decode, encoding::encode, write_qoi};
-pub use qoi::common;
+use crate::lib::{decoding::decode, encoding::encode, write_qoi};
+pub use lib::*;
 
-pub mod qoi;
+mod lib;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -81,8 +81,8 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
                 decode(&qoi_data, &mut decoded).unwrap();
                 decode_time_sum += decode_time.elapsed();
             }
-            println!("{:?}", encode_time_sum.div(iterations));
-            println!("{:?}", decode_time_sum.div(iterations));
+            println!("Encode time: {:?}", encode_time_sum.div(iterations));
+            println!("Decode time: {:?}", decode_time_sum.div(iterations));
         }
         Err((read, expected)) => panic!(
             "Expected {} pixels, found {} pixels instead",

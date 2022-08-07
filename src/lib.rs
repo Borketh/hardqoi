@@ -1,23 +1,22 @@
-// The cargo-asm tool has spoiled my perceptions of how smart the compiler really is,
-// hence my micromanaging exactly which instructions are called at critical parts of the code.
-// My only regret is that it took longer, but the benefits are really good!
-// I intend to make other platform-specific implementations once the base and x86 are finished.
-#[cfg_attr(
-    all(feature = "use_simd", target_feature = "ssse3"),
-    path = "impls/x86-ssse3/lib.rs"
-)]
-#[cfg_attr(
-    any(not(feature = "use_simd"), not(target_feature = "ssse3")),
-    path = "impls/anything/lib.rs"
-)]
-mod qoi;
-
-pub use qoi::*;
+#[path = "impls/mod.rs"]
+mod impls;
+pub use impls::implementation::*;
 
 pub fn write_qoi(data: &Vec<u8>, filename: &str) -> Result<(), std::io::Error> {
     let mut f = std::fs::File::create(filename).expect("Unable to save QOI image!");
     use std::io::Write;
     f.write_all(data)
+}
+
+pub struct HashIndexedArray {
+    pub(crate) indices_array: [[u8; 4]; 64],
+}
+
+pub trait Hashing {
+    fn update(&mut self, pixel_feed: &[[u8; 4]]);
+    fn fetch(&mut self, hash: u8) -> [u8; 4];
+    fn push(&mut self, pixel: [u8; 4]) -> ([u8; 4], u8);
+    fn new() -> Self;
 }
 
 pub mod common {

@@ -1,2 +1,2 @@
 [build]
-rustflags = ["-C", "opt-level=3", "-C", "target-cpu=native", "-C", "incremental=.incremental"]
+rustflags = ["-C", "opt-level=3", "-C", "target-cpu=native"]

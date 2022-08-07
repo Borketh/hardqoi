@@ -7,12 +7,13 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "^1.10.0"
-image = "^0.24.2"
+image = {version = "^0.24.2", optional = true }
 
 [features]
-default = []
+default = ["image_compat"]
 use_std = []
 use_simd = []
+image_compat = ["dep:image"]
 
 [[bin]]
 name = "rustyqoi"
@@ -23,9 +24,9 @@ doc = false
 
 [lib]
 name = "librustyqoi"
-path = "src/qoi.rs"
+path = "src/lib.rs"
 test = false
 bench = false
 doc = false
-crate-type = ["lib", "staticlib", "cdylib"]
+crate-type = ["lib"]
 

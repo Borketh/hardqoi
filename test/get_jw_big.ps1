@@ -1,0 +1,1 @@
+iwr https://upload.wikimedia.org/wikipedia/commons/d/d1/Stephan%27s_Quintet_taken_by_James_Webb_Space_Telescope.png -OutFile stephansquintet-jameswebb-giant.png

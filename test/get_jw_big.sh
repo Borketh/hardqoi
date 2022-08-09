@@ -1,1 +1,1 @@
-curl -#L https://stsci-opo.org/STScI-01G7DB1FHPMJCCY59CQGZC1YJQ.png -o stephansquintet-jameswebb-giant.png
+curl -#L https://upload.wikimedia.org/wikipedia/commons/d/d1/Stephan%27s_Quintet_taken_by_James_Webb_Space_Telescope.png -o stephansquintet-jameswebb-giant.png

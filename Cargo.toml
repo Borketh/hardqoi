@@ -1,5 +1,5 @@
 [package]
-name = "rustyqoi"
+name = "hardqoi"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,14 +16,14 @@ use_simd = []
 image_compat = ["dep:image"]
 
 [[bin]]
-name = "rustyqoi"
+name = "hardqoi"
 path = "src/main.rs"
 test = false
 bench = false
 doc = false
 
 [lib]
-name = "librustyqoi"
+name = "libhardqoi"
 path = "src/lib.rs"
 test = false
 bench = false

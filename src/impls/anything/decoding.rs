@@ -21,21 +21,14 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
         match next_op {
             QOI_OP_RGBA => {
                 pos += 1;
-                prev_pixel[0] = input[pos];
-                pos += 1;
-                prev_pixel[1] = input[pos];
-                pos += 1;
-                prev_pixel[2] = input[pos];
-                pos += 1;
-                prev_pixel[3] = input[pos];
+                let end = pos + 3;
+                prev_pixel = input[pos..=end].try_into().unwrap();
+                pos = end;
             }
             QOI_OP_RGB => {
                 pos += 1;
-                prev_pixel[0] = input[pos];
-                pos += 1;
-                prev_pixel[1] = input[pos];
-                pos += 1;
-                prev_pixel[2] = input[pos];
+                prev_pixel = [input[pos], input[pos + 1], input[pos + 2], prev_pixel[3]];
+                pos += 2;
                 // alpha remains unchanged
             }
             _ => match next_op & 0b11000000 {
@@ -50,10 +43,19 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 }
                 QOI_OP_RUN => {
                     hash_indexed_array.update(&output[last_hash_update..]);
-                    let run_count = (next_op & 0b00111111) + 1;
+                    let mut run_count = (next_op as usize & 0x3f) + 1;
+                    loop {
+                        pos += 1;
+                        if (QOI_OP_RUN..QOI_OP_RGB).contains(&input[pos]) {
+                            let additional = (input[pos] & 0x3f ) as usize + 1;
+                            run_count += additional;
+                        } else {
+                            break;
+                        }
+                    }
+
                     output.extend(core::iter::repeat(prev_pixel).take(run_count as usize));
-                    last_hash_update = output.len() - 1; // no need to repeat hashing updates
-                    pos += 1;
+                    last_hash_update = output.len(); // no need to repeat hashing updates on the same pixel
                     continue;
                 }
                 QOI_OP_INDEX => {

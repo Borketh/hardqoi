@@ -21,9 +21,13 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 pos += 1;
                 unsafe {
                     asm!(
-                        "mov {prev:e}, [{raw_rgba_ptr}]",
-                        raw_rgba_ptr = in(reg) &input[pos],
-                        prev = out(reg) prev_pixel
+                        "mov {prev:e},  [{raw_rgba_ptr}]",
+
+                        raw_rgba_ptr    = in(reg) &input[pos],
+
+                        prev            = out(reg) prev_pixel,
+
+                        options(nostack, preserves_flags, readonly)
                     )
                 }
                 pos += 4;
@@ -32,13 +36,17 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 pos += 1;
                 unsafe {
                     asm!(
-                        "mov    {staging:e},    [{rgbx_ptr}]",
-                        "and    {staging:e},    16777215",
-                        "and    {prev:e},       4278190080",
-                        "or     {prev:e},       {staging:e}",
-                        staging = out(reg) _,
-                        prev = inout(reg) prev_pixel,
-                        rgbx_ptr = in(reg) &input[pos]
+                        "mov        {staging:e},    [{rgbx_ptr}]",
+                        "and        {staging:e},    16777215",
+                        "and        {prev:e},       4278190080",
+                        "or         {prev:e},       {staging:e}",
+
+                        rgbx_ptr    = in(reg)       &input[pos],
+                        prev        = inout(reg)    prev_pixel,
+
+                        staging     = out(reg)      _,
+
+                        options(nostack)
                     );
                 }
                 pos += 3;
@@ -48,22 +56,24 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     let diff = op_diff_expand222(next_op);
                     unsafe {
                         asm!(
-                            "movd   {pixel_xmm},    {px:e}",
-                            "movd   {diff_xmm},     {diff:e}",
-                            "paddb  {pixel_xmm},    {diff_xmm}",
+                            "movd       {pixel_xmm},    {px:e}",
+                            "movd       {diff_xmm},     {diff:e}",
+                            "paddb      {pixel_xmm},    {diff_xmm}",
 
-                            "movd   {bias_xmm},     {bias:e}",
-                            "psubb  {pixel_xmm},    {bias_xmm}",
+                            "movd       {bias_xmm},     {bias:e}",
+                            "psubb      {pixel_xmm},    {bias_xmm}",
 
-                            "movd   {px:e},         {pixel_xmm}",
+                            "movd       {px:e},         {pixel_xmm}",
 
-                            pixel_xmm = out(xmm_reg) _,
-                            diff_xmm = lateout(xmm_reg) _,
-                            bias_xmm = out(xmm_reg) _,
+                            diff        = in(reg)       diff,
+                            bias        = in(reg)       0x00020202,
+                            px          = inout(reg)    prev_pixel,
 
-                            bias = in(reg) 0x00020202,
-                            px = inout(reg) prev_pixel,
-                            diff = in(reg) diff
+                            pixel_xmm   = out(xmm_reg)  _,
+                            diff_xmm    = out(xmm_reg)  _,
+                            bias_xmm    = out(xmm_reg)  _,
+
+                            options(nostack, preserves_flags)
                         )
                     }
                     pos += 1;
@@ -73,16 +83,18 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     let diff = op_luma_expand644(next_op, input[pos]);
                     unsafe {
                         asm!(
-                            "movd   {pixel_xmm},    {px:e}",
-                            "movd   {diff_xmm},     {diff:e}",
-                            "paddb  {pixel_xmm},    {diff_xmm}",
-                            "movd   {px:e},         {pixel_xmm}",
+                            "movd       {pixel_xmm},    {px:e}",
+                            "movd       {diff_xmm},     {diff:e}",
+                            "paddb      {pixel_xmm},    {diff_xmm}",
+                            "movd       {px:e},         {pixel_xmm}",
 
-                            pixel_xmm = out(xmm_reg) _,
-                            diff_xmm = lateout(xmm_reg) _,
+                            diff        = in(reg)       diff,
+                            px          = inout(reg)    prev_pixel,
 
-                            px = inout(reg) prev_pixel,
-                            diff = in(reg) diff
+                            pixel_xmm   = out(xmm_reg)  _,
+                            diff_xmm    = out(xmm_reg)  _,
+
+                            options(nostack, preserves_flags)
                         )
                     }
                     pos += 1;
@@ -108,13 +120,16 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         let offset = output_ptr.align_offset(16);
 
                         asm!(
-                            "movd   xmm0,       {splatee:e}",
-                            "pshufd xmm0,       xmm0,           0",
-                            "movdqu [{output}], xmm0",
-                            splatee = in(reg) prev_pixel,
-                            output = in(reg) output_ptr,
-                            out("xmm0") _,
-                            options(readonly, preserves_flags, nostack)
+                            "movd       xmm0,           {splatee:e}",
+                            "pshufd     xmm0,           xmm0,           0",
+                            "movdqu     [{output}],     xmm0",
+
+                            splatee     = in(reg)       prev_pixel,
+                            output      = in(reg)       output_ptr,
+
+                            out("xmm0")   _,
+
+                            options(nostack, preserves_flags, readonly)
                         );
 
                         if run_count > offset {
@@ -124,15 +139,18 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                                 (((run_count - offset) & (-16isize as usize)) >> 4) + 1;
                             for _i in 0..splats_left {
                                 asm!(
-                                    "movdqa [{output}],      xmm0",
-                                    "movdqa [{output} + 16], xmm0",
-                                    "movdqa [{output} + 32], xmm0",
-                                    "movdqa [{output} + 48], xmm0",
-                                    output = in(reg) output_ptr,
+                                    "movdqa [{output}],         xmm0",
+                                    "movdqa [{output} + 16],    xmm0",
+                                    "movdqa [{output} + 32],    xmm0",
+                                    "movdqa [{output} + 48],    xmm0",
+                                    "lea    {output},           [{output} + 4*16]",
+
+                                    output  = in(reg)           output_ptr,
+
                                     out("xmm0") _,
+
                                     options(nostack, preserves_flags)
                                 );
-                                output_ptr = output_ptr.add(16);
                             }
                         }
 

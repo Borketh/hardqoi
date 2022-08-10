@@ -62,43 +62,45 @@ unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
 
     // reserve xmm0 and xmm1 for quick access of the hashing numbers and mod mask
     asm!(
-        "movddup xmm0, [{half_hash_multipliers}]",
-        "movddup xmm1, [{half_mod_64_mask}]",
-        half_hash_multipliers = in(reg) &HASHING_NUMS_RGBA,
-        half_mod_64_mask = in(reg) &MOD64MASK,
+        "movddup                xmm0,       [{half_hash_multipliers}]",
+        "movddup                xmm1,       [{half_mod_64_mask}]",
+
+        half_hash_multipliers   = in(reg)   &HASHING_NUMS_RGBA,
+        half_mod_64_mask        = in(reg)   &MOD64MASK,
 
         out("xmm0") _,
         out("xmm1") _,
-        options(readonly, preserves_flags, nostack)
+
+        options(nostack, preserves_flags, readonly)
     );
 
     for _ in 0..safe_iterations {
         asm!(
             // load 16 pixels into four xmm registers
-            "movdqu {a}, xmmword ptr [{pixels_ptr}]",   // get b from chunk
-            "add {pixels_ptr}, 16",
-            "movdqu {b}, xmmword ptr [{pixels_ptr}]",   // get b from chunk
-            "add {pixels_ptr}, 16",
-            "movdqu {c}, xmmword ptr [{pixels_ptr}]",   // get c from chunk
-            "add {pixels_ptr}, 16",
-            "movdqu {d}, xmmword ptr [{pixels_ptr}]",   // get d from chunk
-            "add {pixels_ptr}, 16",
+            "movdqu     {a},            [{pixels_ptr}]",   // get b from chunk
+            "lea        {pixels_ptr},   [{pixels_ptr} + 16]",
+            "movdqu     {b},            [{pixels_ptr}]",   // get b from chunk
+            "lea        {pixels_ptr},   [{pixels_ptr} + 16]",
+            "movdqu     {c},            [{pixels_ptr}]",   // get c from chunk
+            "lea        {pixels_ptr},   [{pixels_ptr} + 16]",
+            "movdqu     {d},            [{pixels_ptr}]",   // get d from chunk
+            "lea        {pixels_ptr},   [{pixels_ptr} + 16]",
 
             // multiply and add all pairs pixel channels simultaneously
-            "pmaddubsw {a}, xmm0",
-            "pmaddubsw {b}, xmm0",
-            "pmaddubsw {c}, xmm0",
-            "pmaddubsw {d}, xmm0",
+            "pmaddubsw  {a},            xmm0",
+            "pmaddubsw  {b},            xmm0",
+            "pmaddubsw  {c},            xmm0",
+            "pmaddubsw  {d},            xmm0",
             // horizontal add the channel pairs into final sums
-            "phaddw {a}, {b}",
-            "phaddw {c}, {d}",
+            "phaddw     {a},            {b}",
+            "phaddw     {c},            {d}",
             // cheating % 64
-            "pand {a}, xmm1",       // a is now the hashes of the pixels originally in a and b
-            "pand {c}, xmm1",       // c is now the hashes of the pixels originally in c and d
+            "pand       {a},            xmm1",  // a is now the hashes of the pixels originally in a and b
+            "pand       {c},            xmm1",  // c is now the hashes of the pixels originally in c and d
 
-            "packuswb {a}, {c}",    // a becomes the final 16 hashes in byte form
-            "movntdq xmmword ptr [{hashes_ptr}], {a}",  // put a into list of hash results
-            "add {hashes_ptr}, 16",
+            "packuswb   {a},            {c}",   // a becomes the final 16 hashes in byte form
+            "movntdq    [{hashes_ptr}], {a}",   // put a into list of hash results
+            "lea        {hashes_ptr},   [{hashes_ptr} + 16]",
 
             pixels_ptr = inout(reg) pixels_ptr,
             hashes_ptr = inout(reg) hashes_ptr,
@@ -108,8 +110,8 @@ unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
             b = out(xmm_reg) _,
             c = out(xmm_reg) _,
             d = out(xmm_reg) _,
-            out("xmm0") _,          // reserved for hashing numbers
-            out("xmm1") _,          // reserved for mod 64 mask
+                out("xmm0")  _,          // reserved for hashing numbers
+                out("xmm1")  _,          // reserved for mod 64 mask
 
             options(preserves_flags, nostack)
         );
@@ -127,33 +129,33 @@ unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     use core::arch::asm;
 
     asm!(
-        "movddup {hash_multipliers}, [{half_hash_multipliers}]",
-        "movddup {mod_64_mask}, [{half_mod_64_mask}]",
+        "movddup    {hash_multipliers}, [{half_hash_multipliers}]",
+        "movddup    {mod_64_mask},      [{half_mod_64_mask}]",
 
         // load 16 pixels into four xmm registers
-        "movdqu {a}, xmmword ptr [{in_ptr}]",       // get a from chunk
-        "movdqu {b}, xmmword ptr [{in_ptr} + 16]",  // get b from chunk
+        "movdqu     {a},    [{in_ptr}]",       // get a from chunk
+        "movdqu     {b},    [{in_ptr} + 16]",  // get b from chunk
 
         // multiply and add all pairs pixel channels simultaneously
-        "pmaddubsw {a}, xmm0",
-        "pmaddubsw {b}, xmm0",
+        "pmaddubsw  {a},    xmm0",
+        "pmaddubsw  {b},    xmm0",
 
         // horizontal add the channel pairs into final sums
-        "phaddw {a}, {b}",
+        "phaddw     {a},    {b}",
 
         // cheating % 64
-        "pand {a}, xmm1",                           // a is now the hashes of the pixels originally in a and b
+        "pand       {a},    xmm1",             // a is now the hashes of the pixels originally in a and b
 
-        "packuswb {a}, {a}",                        // a becomes the final 16 hashes in byte form
-        "movq [{hashes_ptr}], {a}",  // put a into list of hash results
+        "packuswb   {a},    {a}",              // a becomes the final 16 hashes in byte form
+        "movq       [{hashes_ptr}],     {a}",  // put a into list of hash results
 
         in_ptr = in(reg) bytes.as_ptr(),
         hashes_ptr = in(reg) output.as_ptr(),
 
-        half_hash_multipliers = in(reg) &HASHING_NUMS_RGBA,
-        half_mod_64_mask = in(reg) &MOD64MASK,
-        hash_multipliers = out(xmm_reg) _,
-        mod_64_mask = out(xmm_reg) _,
+        half_hash_multipliers   = in(reg) &HASHING_NUMS_RGBA,
+        half_mod_64_mask        = in(reg) &MOD64MASK,
+        hash_multipliers        = out(xmm_reg) _,
+        mod_64_mask             = out(xmm_reg) _,
 
         // probably best to let these be assigned by the assembler
         a = out(xmm_reg) _,

@@ -152,17 +152,17 @@ unsafe fn load_three_rgba(from: *const u8, to: *mut [u8; 4]) {
     asm!(
         // from points to the first R, so the contents of staging will be either
         // [RGBA ORGB AORG BAXX] or [RGBA ORGB AXXX XXXX]
-        "movdqu         {staging},      [{in_ptr}]",
-        "movdqu         {shuffler},     [{shuffler_ptr}]",
-        "pshufb         {staging},      {shuffler}",
-        "movdqu         [{output_ptr}], {staging}",
+        "movdqu     {staging},      [{in_ptr}]",
+        "movdqu     {shuffler},     [{shuffle_ptr}]",
+        "pshufb     {staging},      {shuffler}",
+        "movdqu     [{output_ptr}], {staging}",
 
-        in_ptr          = in(reg)       from,
-        output_ptr      = in(reg)       to,
-        shuffler_ptr    = in(reg)       &RGBA_CHA_CHA,
+        in_ptr      = in(reg)       from,
+        output_ptr  = in(reg)       to,
+        shuffle_ptr = in(reg)       &RGBA_CHA_CHA,
 
-        staging         = out(xmm_reg)  _,
-        shuffler        = out(xmm_reg)  _,
+        staging     = out(xmm_reg)  _,
+        shuffler    = out(xmm_reg)  _,
 
         options(nostack, preserves_flags)
     );
@@ -171,12 +171,12 @@ unsafe fn load_three_rgba(from: *const u8, to: *mut [u8; 4]) {
 #[inline(always)]
 unsafe fn load_one_rgba(pixel_ptr: &u8, output_ptr: *mut [u8; 4]) {
     asm!(
-        "mov {tmp:e},       [{raw_rgba_ptr}]",
-        "mov [{output}],    {tmp:e}",
+        "mov        {tmp:e},        [{rgba_ptr}]",
+        "mov        [{output}],     {tmp:e}",
 
-        raw_rgba_ptr        = in(reg) pixel_ptr,
-        output              = in(reg) output_ptr,
-        tmp                 = out(reg) _,
+        rgba_ptr    = in(reg)       pixel_ptr,
+        output      = in(reg)       output_ptr,
+        tmp         = out(reg)      _,
 
         options(nostack, preserves_flags)
     );

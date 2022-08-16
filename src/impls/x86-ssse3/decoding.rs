@@ -43,16 +43,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 } else {
                     pos += 1;
                     unsafe {
-                        asm!(
-                            "mov {tmp:e},       [{raw_rgba_ptr}]",
-                            "mov [{output}],    {tmp:e}",
-
-                            raw_rgba_ptr        = in(reg) &input[pos],
-                            output              = in(reg) output_ptr,
-                            tmp                 = out(reg) _,
-
-                            options(nostack, preserves_flags)
-                        );
+                        load_one_rgba(&input[pos], output_ptr);
                         output.set_len(output.len() + 1);
                     }
                     pos += 4;
@@ -60,29 +51,8 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
             }
             QOI_OP_RGB => {
                 pos += 1;
-                let RGB_LAST_ALPHA_SWITCHEROO = 0x80808080_80808080_80808080_05020100_u128;
                 unsafe {
-                    asm!(
-                        // get the red, green, blue, and a garbage byte
-                        "movd       {staging},      [{rgbx}]",
-                        // swipe blue (extraneous) and alpha from the previous pixel
-                        "pinsrw     {staging},      [{prev} + 2], 2",
-                        // replace old alpha with new, zeroing everything else
-                        "movdqu     {shuffler},     [{shuffle_ptr}]",
-                        "pshufb     {staging},      {shuffler}",
-                        // put the resulting pixel in to the output buffer
-                        "movd       [{output}],     {staging}",
-
-                        rgbx        = in(reg)       &input[pos],
-                        prev        = in(reg)       previous_pixel_ptr,
-                        output      = in(reg)       output_ptr,
-                        shuffle_ptr = in(reg)       &RGB_LAST_ALPHA_SWITCHEROO,
-
-                        shuffler    = out(xmm_reg)  _,
-                        staging     = out(xmm_reg)  _,
-
-                        options(nostack, preserves_flags)
-                    );
+                    load_one_rgb(&input[pos], previous_pixel_ptr, output_ptr);
                     output.set_len(output.len() + 1);
                 }
                 pos += 3;
@@ -91,27 +61,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 QOI_OP_DIFF => {
                     let diff = op_diff_expand222(next_op);
                     unsafe {
-                        asm!(
-                            "movd       {pixel_xmm},    [{prev}]",
-                            "movd       {diff_xmm},     {diff:e}",
-                            "paddb      {pixel_xmm},    {diff_xmm}",
-
-                            "movd       {bias_xmm},     {bias:e}",
-                            "psubb      {pixel_xmm},    {bias_xmm}",
-
-                            "movd       [{output}],     {pixel_xmm}",
-
-                            prev        = in(reg)       previous_pixel_ptr,
-                            diff        = in(reg)       diff,
-                            bias        = in(reg)       0x00020202_u32,
-                            output      = in(reg)       output_ptr,
-
-                            pixel_xmm   = out(xmm_reg)  _,
-                            diff_xmm    = out(xmm_reg)  _,
-                            bias_xmm    = out(xmm_reg)  _,
-
-                            options(nostack, preserves_flags)
-                        );
+                        load_one_diff(diff, previous_pixel_ptr, output_ptr);
                         output.set_len(output.len() + 1);
                     }
                     pos += 1;
@@ -120,21 +70,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     pos += 1;
                     let diff = op_luma_expand644(next_op, input[pos]);
                     unsafe {
-                        asm!(
-                            "movd       {pixel_xmm},    [{prev}]",
-                            "movd       {diff_xmm},     {diff:e}",
-                            "paddb      {pixel_xmm},    {diff_xmm}",
-                            "movd       [{output}],     {pixel_xmm}",
-
-                            diff        = in(reg)       diff,
-                            prev        = in(reg)       previous_pixel_ptr,
-                            output      = in(reg)       output_ptr,
-
-                            pixel_xmm   = out(xmm_reg)  _,
-                            diff_xmm    = out(xmm_reg)  _,
-
-                            options(nostack, preserves_flags)
-                        );
+                        load_one_luma(diff, previous_pixel_ptr, output_ptr);
                         output.set_len(output.len() + 1);
                     }
                     pos += 1;
@@ -156,43 +92,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     output.reserve_exact(run_count + 16);
 
                     unsafe {
-                        let offset = output_ptr.align_offset(16);
-
-                        asm!(
-                            "movd       xmm0,           [{prev}]",
-                            "pshufd     xmm0,           xmm0,           0",
-                            "movdqu     [{output}],     xmm0",
-
-                            prev        = in(reg)       previous_pixel_ptr,
-                            output      = in(reg)       output_ptr,
-
-                            out("xmm0") _,
-
-                            options(nostack, preserves_flags, readonly)
-                        );
-
-                        if run_count > offset {
-                            output_ptr = output_ptr.add(offset);
-
-                            let splats_left =
-                                (((run_count - offset) & (-16isize as usize)) >> 4) + 1;
-                            for _i in 0..splats_left {
-                                asm!(
-                                    "movdqa [{output}],         xmm0",
-                                    "movdqa [{output} + 16],    xmm0",
-                                    "movdqa [{output} + 32],    xmm0",
-                                    "movdqa [{output} + 48],    xmm0",
-                                    "lea    {output},           [{output} + 4*16]",
-
-                                    output  = inout(reg)        output_ptr,
-
-                                    out("xmm0") _,
-
-                                    options(nostack, preserves_flags)
-                                );
-                            }
-                        }
-
+                        load_run(run_count, previous_pixel_ptr, output_ptr);
                         output.set_len(cur_len + run_count);
                     }
                     last_hash_update = output.len(); // no need to repeat hashing updates on the same pixel
@@ -212,7 +112,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
         previous_pixel_ptr = output_ptr;
     } // end loop
 
-    assert_eq!(
+    debug_assert_eq!(
         input[(pos)..(pos + 8)],
         END_8,
         "QOI file does not end normally! Found {:?} instead",
@@ -247,9 +147,8 @@ fn op_luma_expand644(op_and_dg: u8, byte_2: u8) -> u32 {
 
 const RGBA_CHA_CHA: u128 = 0x80808080_0d0c0b0a_08070605_03020100_u128;
 
-#[inline(never)]
-pub unsafe fn load_three_rgba(from: *const u8, to: *mut [u8; 4]) {
-    //println!("!");
+#[inline(always)]
+unsafe fn load_three_rgba(from: *const u8, to: *mut [u8; 4]) {
     asm!(
         // from points to the first R, so the contents of staging will be either
         // [RGBA ORGB AORG BAXX] or [RGBA ORGB AXXX XXXX]
@@ -267,4 +166,130 @@ pub unsafe fn load_three_rgba(from: *const u8, to: *mut [u8; 4]) {
 
         options(nostack, preserves_flags)
     );
+}
+
+#[inline(always)]
+unsafe fn load_one_rgba(pixel_ptr: &u8, output_ptr: *mut [u8; 4]) {
+    asm!(
+        "mov {tmp:e},       [{raw_rgba_ptr}]",
+        "mov [{output}],    {tmp:e}",
+
+        raw_rgba_ptr        = in(reg) pixel_ptr,
+        output              = in(reg) output_ptr,
+        tmp                 = out(reg) _,
+
+        options(nostack, preserves_flags)
+    );
+}
+
+const RGB_LAST_ALPHA_SWITCHEROO: u128 = 0x80808080_80808080_80808080_05020100_u128;
+
+#[inline(always)]
+unsafe fn load_one_rgb(rgbx_ptr: &u8, prev_ptr: *const [u8; 4], output_ptr: *const [u8; 4]) {
+    asm!(
+        // get the red, green, blue, and a garbage byte
+        "movd       {staging},      [{rgbx}]",
+        // swipe blue (extraneous) and alpha from the previous pixel
+        "pinsrw     {staging},      [{prev} + 2], 2",
+        // replace old alpha with new, zeroing everything else
+        "movdqu     {shuffler},     [{shuffle_ptr}]",
+        "pshufb     {staging},      {shuffler}",
+        // put the resulting pixel in to the output buffer
+        "movd       [{output}],     {staging}",
+
+        rgbx        = in(reg)       rgbx_ptr,
+        prev        = in(reg)       prev_ptr,
+        output      = in(reg)       output_ptr,
+        shuffle_ptr = in(reg)       &RGB_LAST_ALPHA_SWITCHEROO,
+
+        shuffler    = out(xmm_reg)  _,
+        staging     = out(xmm_reg)  _,
+
+        options(nostack, preserves_flags)
+    );
+}
+
+#[inline(always)]
+unsafe fn load_run(length: usize, prev_ptr: *const [u8; 4], mut output_ptr: *mut [u8; 4]) {
+    let offset = output_ptr.align_offset(16);
+
+    asm!(
+        "movd       xmm0,           [{prev}]",
+        "pshufd     xmm0,           xmm0,           0",
+        "movdqu     [{output}],     xmm0",
+
+        prev        = in(reg)       prev_ptr,
+        output      = in(reg)       output_ptr,
+
+        out("xmm0") _,
+
+        options(nostack, preserves_flags, readonly)
+    );
+
+    let remaining_to_splat = length as isize - offset as isize;
+
+    if remaining_to_splat > 0 {
+        output_ptr = output_ptr.add(offset);
+
+        let splats_left = (remaining_to_splat & -16isize) >> 4;
+        for _ in 0..=splats_left {
+            asm!(
+                "movdqa [{output}],         xmm0",
+                "movdqa [{output} + 16],    xmm0",
+                "movdqa [{output} + 32],    xmm0",
+                "movdqa [{output} + 48],    xmm0",
+                "lea    {output},           [{output} + 4*16]",
+
+                output  = inout(reg)        output_ptr,
+
+                out("xmm0") _,
+
+                options(nostack, preserves_flags)
+            );
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn load_one_diff(diff: u32, prev_ptr: *const [u8; 4], output_ptr: *mut [u8; 4]) {
+    asm!(
+        "movd       {pixel_xmm},    [{prev}]",
+        "movd       {diff_xmm},     {diff:e}",
+        "paddb      {pixel_xmm},    {diff_xmm}",
+
+        "movd       {bias_xmm},     {bias:e}",
+        "psubb      {pixel_xmm},    {bias_xmm}",
+
+        "movd       [{output}],     {pixel_xmm}",
+
+        prev        = in(reg)       prev_ptr,
+        diff        = in(reg)       diff,
+        bias        = in(reg)       0x00020202_u32,
+        output      = in(reg)       output_ptr,
+
+        pixel_xmm   = out(xmm_reg)  _,
+        diff_xmm    = out(xmm_reg)  _,
+        bias_xmm    = out(xmm_reg)  _,
+
+        options(nostack, preserves_flags)
+    )
+}
+
+#[inline(always)]
+unsafe fn load_one_luma(diff: u32, prev_ptr: *const [u8; 4], output_ptr: *mut [u8; 4]) {
+    asm!(
+        "movd       {pixel_xmm},    [{prev}]",
+        "movd       {diff_xmm},     {diff:e}",
+        "paddb      {pixel_xmm},    {diff_xmm}",
+        "movd       [{output}],     {pixel_xmm}",
+
+        diff        = in(reg)       diff,
+        prev        = in(reg)       prev_ptr,
+        output      = in(reg)       output_ptr,
+
+        pixel_xmm   = out(xmm_reg)  _,
+        diff_xmm    = out(xmm_reg)  _,
+
+        options(nostack, preserves_flags)
+    )
 }

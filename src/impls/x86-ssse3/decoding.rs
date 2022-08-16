@@ -12,10 +12,12 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
 
     let header = QOIHeader::from(<[u8; 14]>::from(input[0..14].try_into().unwrap()));
     let mut pos: usize = 14;
+    let mut output_ptr;
+    let mut previous_pixel_ptr = &[0, 0, 0, 255u8] as *const [u8; 4];
 
     while pos < len {
         let next_op: u8 = input[pos];
-        let output_ptr = output.as_mut_ptr_range().end;
+        output_ptr = output.as_mut_ptr_range().end;
 
         match next_op {
             QOI_OP_RGBA => {
@@ -65,13 +67,14 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         // get the red, green, blue, and a garbage byte
                         "movd       {staging},      [{rgbx}]",
                         // swipe blue (extraneous) and alpha from the previous pixel
-                        "pinsrw     {staging},      [{output} - 2], 2",
+                        "pinsrw     {staging},      [{prev} + 2], 2",
                         // replace old alpha with new, zeroing everything else
                         "pshufb     {staging},      [{shuffler}]",
                         // put the resulting pixel in to the output buffer
                         "movd       [{output}],     {staging}",
 
                         rgbx        = in(reg)       &input[pos],
+                        prev        = in(reg)       previous_pixel_ptr,
                         output      = in(reg)       output_ptr,
                         shuffler    = in(reg)       &RGB_LAST_ALPHA_SWITCHEROO,
 
@@ -88,7 +91,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     let diff = op_diff_expand222(next_op);
                     unsafe {
                         asm!(
-                            "movd       {pixel_xmm},    [{output} - 4]",
+                            "movd       {pixel_xmm},    [{prev}]",
                             "movd       {diff_xmm},     {diff:e}",
                             "paddb      {pixel_xmm},    {diff_xmm}",
 
@@ -97,6 +100,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
 
                             "movd       [{output}],     {pixel_xmm}",
 
+                            prev        = in(reg)       previous_pixel_ptr,
                             diff        = in(reg)       diff,
                             bias        = in(reg)       0x00020202_u32,
                             output      = in(reg)       output_ptr,
@@ -116,12 +120,13 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     let diff = op_luma_expand644(next_op, input[pos]);
                     unsafe {
                         asm!(
-                            "movd       {pixel_xmm},    [{output} - 4]",
+                            "movd       {pixel_xmm},    [{prev}]",
                             "movd       {diff_xmm},     {diff:e}",
                             "paddb      {pixel_xmm},    {diff_xmm}",
                             "movd       [{output}],     {pixel_xmm}",
 
                             diff        = in(reg)       diff,
+                            prev        = in(reg)       previous_pixel_ptr,
                             output      = in(reg)       output_ptr,
 
                             pixel_xmm   = out(xmm_reg)  _,
@@ -154,10 +159,11 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         let offset = output_ptr.align_offset(16);
 
                         asm!(
-                            "movd       xmm0,           [{output} - 4]",
+                            "movd       xmm0,           [{prev}]",
                             "pshufd     xmm0,           xmm0,           0",
                             "movdqu     [{output}],     xmm0",
 
+                            prev        = in(reg)       previous_pixel_ptr,
                             output      = in(reg)       output_ptr,
 
                             out("xmm0") _,
@@ -203,6 +209,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 _ => panic!("YOUR CPU'S AND GATE IS BROKEN"),
             }, // end match 2-bit
         } // end match 8-bit
+        previous_pixel_ptr = output_ptr;
     } // end loop
 
     assert_eq!(

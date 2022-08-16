@@ -12,7 +12,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
 
     let header = QOIHeader::from(<[u8; 14]>::from(input[0..14].try_into().unwrap()));
     let mut pos: usize = 14;
-    let mut output_ptr;
+    let mut output_ptr; // = output.as_mut_ptr_range().end;
     let mut previous_pixel_ptr = &[0, 0, 0, 255u8] as *const [u8; 4];
 
     while pos < len {
@@ -33,13 +33,12 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
 
                     output.reserve_exact(4);
                     unsafe {
-                        load_three_rgba(input.as_ptr().add(pos + 1), output.as_mut_ptr_range().end);
-
-                        output.set_len(len + n_added)
+                        load_three_rgba(input.as_ptr().add(pos + 1), output_ptr);
+                        output.set_len(len + n_added);
+                        previous_pixel_ptr = output_ptr.add(n_added - 1);
                     }
 
                     pos += 5 * n_added;
-
                     continue;
                 } else {
                     pos += 1;
@@ -69,15 +68,17 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         // swipe blue (extraneous) and alpha from the previous pixel
                         "pinsrw     {staging},      [{prev} + 2], 2",
                         // replace old alpha with new, zeroing everything else
-                        "pshufb     {staging},      [{shuffler}]",
+                        "movdqu     {shuffler},     [{shuffle_ptr}]",
+                        "pshufb     {staging},      {shuffler}",
                         // put the resulting pixel in to the output buffer
                         "movd       [{output}],     {staging}",
 
                         rgbx        = in(reg)       &input[pos],
                         prev        = in(reg)       previous_pixel_ptr,
                         output      = in(reg)       output_ptr,
-                        shuffler    = in(reg)       &RGB_LAST_ALPHA_SWITCHEROO,
+                        shuffle_ptr = in(reg)       &RGB_LAST_ALPHA_SWITCHEROO,
 
+                        shuffler    = out(xmm_reg)  _,
                         staging     = out(xmm_reg)  _,
 
                         options(nostack, preserves_flags)
@@ -155,7 +156,6 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     output.reserve_exact(run_count + 16);
 
                     unsafe {
-                        let mut output_ptr = output.as_mut_ptr().add(cur_len);
                         let offset = output_ptr.align_offset(16);
 
                         asm!(
@@ -184,7 +184,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                                     "movdqa [{output} + 48],    xmm0",
                                     "lea    {output},           [{output} + 4*16]",
 
-                                    output  = in(reg) output_ptr,
+                                    output  = inout(reg)        output_ptr,
 
                                     out("xmm0") _,
 
@@ -196,7 +196,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         output.set_len(cur_len + run_count);
                     }
                     last_hash_update = output.len(); // no need to repeat hashing updates on the same pixel
-                    continue;
+                    output_ptr = output.as_mut_ptr_range().end;
                 }
                 QOI_OP_INDEX => {
                     hash_indexed_array.update(&output[last_hash_update..]);

@@ -39,7 +39,6 @@ impl Hashing for HashIndexedArray {
 
 pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     // this wraps the "unsafe" enclosed function to make the most efficient use of SIMD
-    // dbg!(count);
     if count <= 8 {
         unsafe { simd_hashes_lt8(bytes, count) }
     } else {
@@ -82,12 +81,12 @@ unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
             "movdqu     {d},            [{pixels_ptr} + 48]",   // get d from chunk
             "lea        {pixels_ptr},   [{pixels_ptr} + 64]",
 
-            // multiply and add all pairs pixel channels simultaneously
+            // multiply and add all pairs of pixel channels simultaneously
             "pmaddubsw  {a},            xmm10",
             "pmaddubsw  {b},            xmm10",
             "pmaddubsw  {c},            xmm10",
             "pmaddubsw  {d},            xmm10",
-            // horizontal add the channel pairs into final sums
+            // horizontally add the channel pairs into final sums
             "phaddw     {a},            {b}",
             "phaddw     {c},            {d}",
             // cheating % 64
@@ -128,21 +127,21 @@ unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
         "movddup        {multipliers},      [{multipliers_ptr}]",
         "movddup        {mod_64_mask},      [{mask_ptr}]",
 
-        // load 16 pixels into four xmm registers
+        // load up to 8 pixels into two xmm registers
         "movdqu         {a},                [{in_ptr}]",        // get a from chunk
         "movdqu         {b},                [{in_ptr} + 16]",   // get b from chunk
 
-        // multiply and add all pairs pixel channels simultaneously
+        // multiply and add all pairs of pixel channels simultaneously
         "pmaddubsw      {a},                {multipliers}",
         "pmaddubsw      {b},                {multipliers}",
 
-        // horizontal add the channel pairs into final sums
+        // horizontally add the channel pairs into final sums
         "phaddw         {a},                {b}",
 
         // cheating % 64
         "pand           {a},                {mod_64_mask}",     // a is now the hashes of the pixels originally in a and b
 
-        "packuswb       {a},                {a}",               // a becomes the final 16 hashes in byte form
+        "packuswb       {a},                {a}",               // a becomes the final 8 hashes in byte form
         "movq           [{hashes_ptr}],     {a}",               // put a into list of hash results
 
         in_ptr          = in(reg)           bytes.as_ptr(),
@@ -163,6 +162,7 @@ unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     return output;
 }
 
+/// The simplest hash function
 fn hash_rgba(pixel: [u8; 4]) -> u8 {
     ((pixel[0] * 3) + (pixel[1] * 5) + (pixel[2] * 7) + (pixel[3] * 11)) & 0b00111111u8
 }

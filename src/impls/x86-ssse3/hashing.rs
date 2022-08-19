@@ -2,6 +2,7 @@ static MOD64MASK: u64 = 0x003f003f003f003fu64;
 static HASHING_NUMS_RGBA: u64 = 0x0b0705030b070503u64;
 
 pub use crate::{HashIndexedArray, Hashing};
+use core::arch::asm;
 
 impl Hashing for HashIndexedArray {
     fn update(&mut self, pixel_feed: &[[u8; 4]]) {
@@ -17,7 +18,6 @@ impl Hashing for HashIndexedArray {
                 self.indices_array[hashes[i] as usize] = pixel_feed[i];
             }
         }
-
     }
 
     fn fetch(&mut self, hash: u8) -> [u8; 4] {
@@ -49,7 +49,6 @@ pub fn hashes_rgba(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
 
 #[inline(always)] // because it's wrapped by the above function, a nested call isn't useful
 unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
-    use core::arch::asm;
     let safe_iterations = count / 16 + 1;
     let safe_alloc_bytes = safe_iterations * 16;
     // Allocate 1-16 bytes extra for the hashes vector, so that writing the final xmm doesn't
@@ -124,9 +123,9 @@ unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
 }
 
 /// A stripped down SIMD hashing for pixel counts between 2 and 8 (inclusive)
+#[inline(always)]
 unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     let mut output: Vec<u8> = Vec::with_capacity(8);
-    use core::arch::asm;
 
     asm!(
         "movddup    {hash_multipliers}, [{half_hash_multipliers}]",

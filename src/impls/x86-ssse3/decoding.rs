@@ -5,12 +5,14 @@ use core::arch::asm;
 
 use super::hashing::{HashIndexedArray, Hashing};
 
+#[inline(never)]
 pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, usize)> {
     let len: usize = input.len() - 8;
     let mut hash_indexed_array = HashIndexedArray::new();
     let mut last_hash_update = 0;
 
     let header = QOIHeader::from(<[u8; 14]>::from(input[0..14].try_into().unwrap()));
+    output.reserve_exact(header.image_size());
     let mut pos: usize = 14;
     let mut output_ptr; // = output.as_mut_ptr_range().end;
     let mut previous_pixel_ptr = &[0, 0, 0, 255u8] as *const [u8; 4];
@@ -31,7 +33,6 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         theres_three_actually as usize
                     };
 
-                    output.reserve_exact(4);
                     unsafe {
                         load_three_rgba(input.as_ptr().add(pos + 1), output_ptr);
                         output.set_len(len + n_added);
@@ -67,36 +68,30 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     pos += 1;
                 }
                 QOI_OP_LUMA => {
-                    pos += 1;
-                    let diff = op_luma_expand644(next_op, input[pos]);
                     unsafe {
-                        load_one_luma(diff, previous_pixel_ptr, output_ptr);
+                        load_one_luma(
+                            input.as_ptr().add(pos) as *const u16,
+                            previous_pixel_ptr,
+                            output_ptr,
+                        );
                         output.set_len(output.len() + 1);
                     }
-                    pos += 1;
+                    pos += 2;
                 }
                 QOI_OP_RUN => {
                     hash_indexed_array.update(&output[last_hash_update..]);
-                    let mut run_count = (next_op as usize & 0x3f) + 1;
-                    loop {
-                        pos += 1;
-                        if (QOI_OP_RUN..QOI_OP_RGB).contains(&input[pos]) {
-                            let additional = (input[pos] & 0x3f) as usize + 1;
-                            run_count += additional;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    let cur_len = output.len();
-                    output.reserve_exact(run_count + 16);
 
                     unsafe {
+                        let (run_count, pos_inc) = find_run_length(input.as_ptr().add(pos));
+                        pos += pos_inc;
+                        let new_len = output.len() + run_count;
+
                         load_run(run_count, previous_pixel_ptr, output_ptr);
-                        output.set_len(cur_len + run_count);
+                        output.set_len(new_len);
+
+                        output_ptr = output.as_mut_ptr_range().end;
+                        last_hash_update = new_len; // no need to repeat hashing updates on the same pixel
                     }
-                    last_hash_update = output.len(); // no need to repeat hashing updates on the same pixel
-                    output_ptr = output.as_mut_ptr_range().end;
                 }
                 QOI_OP_INDEX => {
                     hash_indexed_array.update(&output[last_hash_update..]);
@@ -132,17 +127,6 @@ fn op_diff_expand222(x: u8) -> u32 {
     // thanks for this function, https://github.com/adrianparvino ! :)
     let y = (x as u32) * ((1 << 24) | (1 << 14) | (1 << 4));
     (y & 0x03030303) >> 8
-}
-
-fn op_luma_expand644(op_and_dg: u8, byte_2: u8) -> u32 {
-    let dg_m8 = op_and_dg.wrapping_sub(0b10000000_u8 + 40u8);
-
-    return u32::from_ne_bytes([
-        (byte_2 >> 4).wrapping_add(dg_m8),
-        dg_m8.wrapping_add(8u8),
-        (byte_2 & 0xf).wrapping_add(dg_m8),
-        0,
-    ]);
 }
 
 const RGBA_CHA_CHA: u128 = 0x80808080_0d0c0b0a_08070605_03020100_u128;
@@ -210,44 +194,49 @@ unsafe fn load_one_rgb(rgbx_ptr: &u8, prev_ptr: *const [u8; 4], output_ptr: *con
 }
 
 #[inline(always)]
-unsafe fn load_run(length: usize, prev_ptr: *const [u8; 4], mut output_ptr: *mut [u8; 4]) {
-    let offset = output_ptr.align_offset(16);
+fn length_from_op_run(op_run: u8) -> usize {
+    return (op_run & !QOI_OP_RUN) as usize + 1;
+}
+
+unsafe fn find_run_length(start_ptr: *const u8) -> (usize, usize) {
+    let mut end_ptr: *const u8;
+    let mut pos_inc = 0;
 
     asm!(
-        "movd       xmm0,           [{prev}]",
-        "pshufd     xmm0,           xmm0,           0",
-        "movdqu     [{output}],     xmm0",
+        "cld",
+        "mov rcx, -1",
+        "repe scasb",
 
-        prev        = in(reg)       prev_ptr,
-        output      = in(reg)       output_ptr,
-
-        out("xmm0") _,
-
-        options(nostack, preserves_flags, readonly)
+        in("al") 0xfdu8,
+        inout("rdi") start_ptr => end_ptr,
+        out("rcx") _
     );
 
-    let remaining_to_splat = length as isize - offset as isize;
+    let actual_end_ptr = end_ptr.sub(1);
+    let number_of_62s = actual_end_ptr as usize - start_ptr as usize;
+    pos_inc += number_of_62s;
+    let last_run = *actual_end_ptr;
 
-    if remaining_to_splat > 0 {
-        output_ptr = output_ptr.add(offset);
+    let remaining_run = if (QOI_OP_RUN..QOI_OP_RGB).contains(&last_run) {
+        pos_inc += 1;
+        length_from_op_run(last_run)
+    } else {
+        0
+    };
+    ((number_of_62s * 62) + remaining_run, pos_inc)
+}
 
-        let splats_left = (remaining_to_splat & -16isize) >> 4;
-        for _ in 0..=splats_left {
-            asm!(
-                "movdqa [{output}],         xmm0",
-                "movdqa [{output} + 16],    xmm0",
-                "movdqa [{output} + 32],    xmm0",
-                "movdqa [{output} + 48],    xmm0",
-                "lea    {output},           [{output} + 4*16]",
-
-                output  = inout(reg)        output_ptr,
-
-                out("xmm0") _,
-
-                options(nostack, preserves_flags)
-            );
-        }
-    }
+#[inline(always)]
+unsafe fn load_run(length: usize, prev_ptr: *const [u8; 4], output_ptr: *mut [u8; 4]) {
+    asm!(
+        "cld",
+        "mov eax, [{prev}]",
+        "rep stosd",
+        prev = in(reg) prev_ptr,
+        in("rcx") length + 1,
+        in("rdi") output_ptr,
+        out("eax") _,
+    )
 }
 
 #[inline(always)]
@@ -276,20 +265,43 @@ unsafe fn load_one_diff(diff: u32, prev_ptr: *const [u8; 4], output_ptr: *mut [u
 }
 
 #[inline(always)]
-unsafe fn load_one_luma(diff: u32, prev_ptr: *const [u8; 4], output_ptr: *mut [u8; 4]) {
+unsafe fn load_one_luma(op_ptr: *const u16, prev_ptr: *const [u8; 4], output_ptr: *mut [u8; 4]) {
     asm!(
-        "movd       {pixel_xmm},    [{prev}]",
-        "movd       {diff_xmm},     {diff:e}",
-        "paddb      {pixel_xmm},    {diff_xmm}",
-        "movd       [{output}],     {pixel_xmm}",
+        // load the pixel as two words
+        "mov        {green_red:x},  [{prev}]",
+        "mov        {alpha_blue:x}, [{prev} + 2]",
 
-        diff        = in(reg)       diff,
-        prev        = in(reg)       prev_ptr,
-        output      = in(reg)       output_ptr,
+        // load the OP_LUMA as one word and copy 2nd byte out
+        "mov        {db_dg:x},      [{op_ptr}]",
+        "mov        {dr},           {db_dg:h}", // the byte contains both blue and red
 
-        pixel_xmm   = out(xmm_reg)  _,
-        diff_xmm    = out(xmm_reg)  _,
+        // isolate the real values of [dr - dg + 8, dg + 32, db - dg + 8]
+        "shr        {dr},           4",
+        "and        {db_dg:x},      3903",      // 0x0f3f
 
-        options(nostack, preserves_flags)
+        // remove bias from deltas and apply them to the previous pixel
+        // abuse the hell out of the add circuit's reciprocal throughput of 0.25
+        "sub        {db_dg:l},      40",        // push dg's bias over to apply to dr and db
+        "add        {db_dg:h},      {db_dg:l}",
+        "add        {dr},           {db_dg:l}",
+        "add        {db_dg:l},      8",         // correct the over-bias above
+        "add        {alpha_blue:l}, {db_dg:h}",
+        "add        {green_red:l},  {dr}",
+        "add        {green_red:h},  {db_dg:l}",
+
+        // write output directly to buffer
+        "mov        [{output}],     {green_red:x}",
+        "mov        [{output} + 2], {alpha_blue:x}",
+
+        op_ptr      = in(reg)        op_ptr,
+        prev        = in(reg)        prev_ptr,
+        output      = in(reg)        output_ptr,
+
+        db_dg       = out(reg_abcd)  _,
+        dr          = out(reg_byte)  _,
+        alpha_blue  = out(reg_abcd)  _,
+        green_red   = out(reg_abcd)  _,
+
+        options(nostack)
     )
 }

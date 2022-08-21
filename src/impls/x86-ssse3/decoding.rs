@@ -82,8 +82,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     hash_indexed_array.update(&output[last_hash_update..]);
 
                     unsafe {
-                        let (run_count, pos_inc) = find_run_length(input.as_ptr().add(pos));
-                        pos += pos_inc;
+                        let run_count = find_run_length(input.as_ptr().add(pos), &mut pos, len);
                         let new_len = output.len() + run_count;
 
                         load_run(run_count, previous_pixel_ptr, output_ptr);
@@ -97,7 +96,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     hash_indexed_array.update(&output[last_hash_update..]);
                     last_hash_update = output.len();
 
-                    let index = next_op & 0b00111111;
+                    let index = next_op & 0x3f;
                     output.push(hash_indexed_array.fetch(index));
                     pos += 1;
                 }
@@ -198,32 +197,30 @@ fn length_from_op_run(op_run: u8) -> usize {
     return (op_run & !QOI_OP_RUN) as usize + 1;
 }
 
-unsafe fn find_run_length(start_ptr: *const u8) -> (usize, usize) {
+unsafe fn find_run_length(start_ptr: *const u8, pos: &mut usize, size: usize) -> usize {
     let mut end_ptr: *const u8;
-    let mut pos_inc = 0;
 
     asm!(
         "cld",
-        "mov rcx, -1",
         "repe scasb",
 
         in("al") 0xfdu8,
         inout("rdi") start_ptr => end_ptr,
-        out("rcx") _
+        inout("rcx") (size - *pos) + 1 => _
     );
 
     let actual_end_ptr = end_ptr.sub(1);
     let number_of_62s = actual_end_ptr as usize - start_ptr as usize;
-    pos_inc += number_of_62s;
+    *pos += number_of_62s;
     let last_run = *actual_end_ptr;
 
     let remaining_run = if (QOI_OP_RUN..QOI_OP_RGB).contains(&last_run) {
-        pos_inc += 1;
+        *pos += 1;
         length_from_op_run(last_run)
     } else {
         0
     };
-    ((number_of_62s * 62) + remaining_run, pos_inc)
+    (number_of_62s * 62) + remaining_run
 }
 
 #[inline(always)]

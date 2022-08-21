@@ -32,7 +32,7 @@ impl Hashing for HashIndexedArray {
 
     fn new() -> Self {
         Self {
-            indices_array: [[0, 0, 0, 0]; 64],
+            indices_array: [[0u8; 4]; 64],
         }
     }
 }

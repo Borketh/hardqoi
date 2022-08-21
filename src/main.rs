@@ -14,13 +14,11 @@ mod lib;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    println!("{:?}", args);
 
     let filename = &args[1];
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();
-        dbg!(&format_ext);
         filename.replace(format_ext.as_str(), "qoi")
     };
     img_to_qoi(image, new_filename.as_str());
@@ -69,7 +67,7 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
 
             let mut encode_time_sum: Duration = Duration::from_secs(0);
             let mut decode_time_sum: Duration = Duration::from_secs(0);
-            let iterations = 100;
+            let iterations = 1000;
 
             for _ in 0..iterations {
                 qoi_data.clear();

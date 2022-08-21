@@ -12,7 +12,7 @@ pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize
     buf.extend(MAGIC_QOIF);
     buf.extend(meta.to_bytes());
 
-    match encode_pixels(raw, buf) {
+    match encode_pixels(raw, buf, meta.image_size()) {
         Ok(n) => {
             buf.extend(END_8);
             Ok(n)
@@ -21,39 +21,38 @@ pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize
     }
 }
 
-fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (usize, usize)> {
-    let pixels: &[[u8; 4]] = cast_slice::<u8, [u8; 4]>(raw);
+#[inline(never)]
+fn encode_pixels(
+    raw: &Vec<u8>,
+    output_buffer: &mut Vec<u8>,
+    size: usize,
+) -> Result<usize, (usize, usize)> {
+    let pixels: &[u32] = cast_slice::<u8, u32>(raw);
+    debug_assert_eq!(size, pixels.len());
+
     let hashes: Vec<u8> = hashes_rgba(raw, pixels.len());
 
-    let mut prev_pixel: [u8; 4] = [0, 0, 0, 255];
-    let mut hash_indexed_array: [[u8; 4]; 64] = [[0u8; 4]; 64];
-    let pixel_run_counter: &mut u8 = &mut 0u8;
-    let mut px_written = 0usize;
+    let mut hash_indexed_array: [u32; 64] = [0u32; 64];
+    let mut pos = 0;
+    let mut prev_pixel: &u32 = &0xff000000;
 
-    // dbg!(&hashes);
+    while pos < size {
+        let pixel = pixels[pos];
+        // dbg!(size, pos, pixel);
+        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hashes[pos]);
 
-    for (i, &pixel) in pixels.iter().enumerate() {
-        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hashes[i]);
-
-        if pixel == prev_pixel {
-            *pixel_run_counter += 1u8;
-            if *pixel_run_counter == 62u8 {
-                // we have to cut off early for overflow
-                px_written += *pixel_run_counter as usize;
-                write_run(output_buffer, pixel_run_counter);
+        if pixel == *prev_pixel {
+            unsafe {
+                let current_ptr = pixels.as_ptr().add(pos);
+                let (max_runs, last_run) = find_run_length(current_ptr, &mut pos, size);
+                write_run(output_buffer, max_runs, last_run);
             }
             continue;
-        } else if *pixel_run_counter > 0u8 {
-            // end the previous run and keep going down the comparisons
-            px_written += *pixel_run_counter as usize;
-            write_run(output_buffer, pixel_run_counter);
         }
 
         if pixel == pixel_of_same_hash {
-            px_written += 1;
-            write_hash_index(output_buffer, hashes[i]);
-        } else if pixel[3] != prev_pixel[3] {
-            px_written += 1;
+            write_hash_index(output_buffer, hashes[pos]);
+        } else if (pixel & 0xff000000) != (*prev_pixel & 0xff000000) {
             write_rgba(output_buffer, pixel);
         } else {
             let mut delta_pixel: u32;
@@ -73,7 +72,7 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
 
                     // input ptrs
                     pixel_ptr = in(reg) &pixel,
-                    last_pixel_ptr = in(reg) &prev_pixel,
+                    last_pixel_ptr = in(reg) prev_pixel,
                     bias = in(reg) 0x00020202,
 
                     // output ptrs
@@ -96,7 +95,6 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
                 && delta_pixel_bias2[1] < 4u8
                 && delta_pixel_bias2[2] < 4u8
             {
-                px_written += 1;
                 write_diff(output_buffer, delta_pixel_bias2);
             } else {
                 let [dr, dg, db, _] = delta_pixel;
@@ -105,61 +103,97 @@ fn encode_pixels(raw: &Vec<u8>, output_buffer: &mut Vec<u8>) -> Result<usize, (u
                 let db_dg_bias8 = db.wrapping_sub(dg).wrapping_add(8u8);
 
                 if dg_bias32 < 64 && dr_dg_bias8 < 16 && db_dg_bias8 < 16 {
-                    px_written += 1;
                     write_luma(output_buffer, dg_bias32, dr_dg_bias8, db_dg_bias8);
                 } else {
-                    px_written += 1;
                     write_rgb(output_buffer, pixel);
                 }
             }
         }
 
-        prev_pixel = pixel;
+        prev_pixel = &pixels[pos];
+        pos += 1;
     }
 
-    if *pixel_run_counter > 0u8 {
-        // end the previous run and keep going down the comparisons
-        px_written += *pixel_run_counter as usize;
-        write_run(output_buffer, pixel_run_counter);
-    }
-
-    if px_written == raw.len() / 4 {
-        Ok(px_written)
+    if pos == size {
+        Ok(pos)
     } else {
-        Err((px_written, raw.len() / 4))
+        Err((pos, size))
     }
 }
 
-fn write_rgba(pixel_buffer: &mut Vec<u8>, pixel: [u8; 4]) {
-    pixel_buffer.push(QOI_OP_RGBA);
-    pixel_buffer.extend(pixel);
+fn write_rgba(encoded_buf: &mut Vec<u8>, pixel: u32) {
+    encoded_buf.push(QOI_OP_RGBA);
+    encoded_buf.extend(pixel.to_ne_bytes());
 }
 
-fn write_rgb(pixel_buffer: &mut Vec<u8>, pixel: [u8; 4]) {
-    pixel_buffer.push(QOI_OP_RGB);
-    pixel_buffer.push(pixel[0]);
-    pixel_buffer.push(pixel[1]);
-    pixel_buffer.push(pixel[2]);
+fn write_rgb(encoded_buf: &mut Vec<u8>, pixel: u32) {
+    encoded_buf.extend(((pixel << 8) | QOI_OP_RGB as u32).to_ne_bytes())
 }
 
-fn hash_swap(history_by_hash: &mut [[u8; 4]; 64], pixel: [u8; 4], hash: u8) -> [u8; 4] {
-    core::mem::replace(&mut history_by_hash[(hash/*& 0x3f*/) as usize], pixel)
+fn hash_swap(history_by_hash: &mut [u32; 64], pixel: u32, hash: u8) -> u32 {
+    debug_assert!(hash < 64);
+    core::mem::replace(&mut history_by_hash[hash as usize], pixel)
 }
 
-fn write_hash_index(pixel_buffer: &mut Vec<u8>, hash: u8) {
-    pixel_buffer.push(QOI_OP_INDEX | hash);
+fn write_hash_index(encoded_buf: &mut Vec<u8>, hash: u8) {
+    encoded_buf.push(QOI_OP_INDEX | hash);
 }
 
-fn write_diff(pixel_buffer: &mut Vec<u8>, diff_px: [u8; 4]) {
-    pixel_buffer.push(QOI_OP_DIFF | diff_px[0] << 4 | diff_px[1] << 2 | diff_px[2]);
+fn write_diff(encoded_buf: &mut Vec<u8>, diff_px: [u8; 4]) {
+    encoded_buf.push(QOI_OP_DIFF | diff_px[0] << 4 | diff_px[1] << 2 | diff_px[2]);
 }
 
-fn write_luma(pixel_buffer: &mut Vec<u8>, dg: u8, dr_dg: u8, db_dg: u8) {
-    pixel_buffer.push(QOI_OP_LUMA | dg);
-    pixel_buffer.push((dr_dg << 4) | db_dg);
+fn write_luma(encoded_buf: &mut Vec<u8>, dg: u8, dr_dg: u8, db_dg: u8) {
+    encoded_buf.push(QOI_OP_LUMA | dg);
+    encoded_buf.push((dr_dg << 4) | db_dg);
 }
 
-fn write_run(pixel_buffer: &mut Vec<u8>, count: &mut u8) {
-    pixel_buffer.push(QOI_OP_RUN | (*count - 1u8)); // 0 means 1 for compactness
-    *count = 0u8;
+#[inline(always)]
+unsafe fn write_run(encoded_buf: &mut Vec<u8>, max_runs: usize, remainder: usize) {
+    let rem_op = QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN);
+    let additional = max_runs;
+
+    if max_runs > 0 {
+        encoded_buf.reserve_exact(additional);
+        let start_ptr = encoded_buf.as_mut_ptr_range().end;
+        asm!(
+            "cld",
+            "rep stosb",
+            inout("rcx") additional => _,
+            inout("rdi") start_ptr => _,
+            in("al") 0xfdu8,
+        );
+        encoded_buf.set_len(encoded_buf.len() + additional);
+        if remainder != 0 {
+            encoded_buf.push(rem_op);
+        }
+    } else {
+        encoded_buf.push(rem_op);
+    }
+}
+
+#[inline(always)]
+unsafe fn find_run_length(start_ptr: *const u32, pos: &mut usize, size: usize) -> (usize, usize) {
+    let mut end_ptr: *const u32;
+
+    asm!(
+        "cld",
+        "mov eax, [rdi]",
+        "repe scasd",
+        inout("rdi") start_ptr => end_ptr,
+        inout("rcx") (size - *pos) + 1 => _,
+        out("eax") _
+    );
+
+    let actual_end_ptr = end_ptr.sub(1);
+
+    let total_run_length = actual_end_ptr.offset_from(start_ptr);
+    debug_assert!(total_run_length > 0);
+    let total_run_length = total_run_length as usize;
+    *pos += total_run_length;
+
+    let n_max_runs = total_run_length / 62;
+    let remaining_run = total_run_length % 62;
+
+    (n_max_runs, remaining_run)
 }

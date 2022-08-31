@@ -14,8 +14,14 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
     let header = QOIHeader::from(<[u8; 14]>::from(input[0..14].try_into().unwrap()));
     output.reserve_exact(header.image_size());
     let mut pos: usize = 14;
-    let mut output_ptr; // = output.as_mut_ptr_range().end;
-    let mut previous_pixel_ptr = &[0, 0, 0, 255u8] as *const [u8; 4];
+    let mut output_ptr: *mut [u8; 4];
+    let mut previous_pixel_ptr: *const [u8; 4] = &[0, 0, 0, 255u8];
+
+    // if the first op is a run, black ends up not in the HIA because of the hash-skipping behaviour
+    if (QOI_OP_RUN + 1..QOI_OP_RGB).contains(&input[pos]) {
+        // this fixes that
+        hash_indexed_array.push(unsafe { *previous_pixel_ptr });
+    }
 
     while pos < len {
         let next_op: u8 = input[pos];
@@ -88,7 +94,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                         load_run(run_count, previous_pixel_ptr, output_ptr);
                         output.set_len(new_len);
 
-                        output_ptr = output.as_mut_ptr_range().end;
+                        output_ptr = output.as_mut_ptr().add(new_len);
                         last_hash_update = new_len; // no need to repeat hashing updates on the same pixel
                     }
                 }

@@ -67,6 +67,17 @@ impl From<image::Rgba<u8>> for PIXEL {
     }
 }
 
+use core::fmt;
+impl fmt::Debug for PIXEL {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Pixel: [r: {}, g: {}, b: {}, a: {}]",
+            &self.0[0], &self.0[1], &self.0[2], &self.0[3]
+        )
+    }
+}
+
 impl PIXEL {
     #[inline]
     pub fn r(&self) -> u8 {

@@ -1,5 +1,5 @@
 use bytemuck::cast_slice;
-use wrap_math_pixel::*;
+use wrap_math_pixel::{BIAS_2, BLACK, PIXEL, ZERO_PIXEL};
 
 use crate::common::{
     QOIHeader, END_8, MAGIC_QOIF, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,

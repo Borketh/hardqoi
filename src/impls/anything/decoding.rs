@@ -53,7 +53,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                     loop {
                         pos += 1;
                         if (QOI_OP_RUN..QOI_OP_RGB).contains(&input[pos]) {
-                            let additional = (input[pos] & 0x3f ) as usize + 1;
+                            let additional = (input[pos] & 0x3f) as usize + 1;
                             run_count += additional;
                         } else {
                             break;

@@ -38,7 +38,6 @@ fn encode_pixels(
 
     while pos < size {
         let pixel = pixels[pos];
-        // dbg!(size, pos, pixel);
         let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hashes[pos]);
 
         if pixel == *prev_pixel {
@@ -61,7 +60,7 @@ fn encode_pixels(
             let mut delta_pixel_bias2: u32;
             unsafe {
                 asm!(
-                    "movd {delta_px_xmm}, [{pixel_ptr}]",
+                    "movd {delta_px_xmm}, {pixel:e}",
                     "movd {last_pixel_xmm}, [{last_pixel_ptr}]",
                     "psubb {delta_px_xmm}, {last_pixel_xmm}",
                     "movd {delta_px:e}, {delta_px_xmm}",
@@ -70,8 +69,8 @@ fn encode_pixels(
                     "paddb {bias_2_xmm}, {delta_px_xmm}",
                     "movd {delta_px_b2:e}, {bias_2_xmm}",
 
-                    // input ptrs
-                    pixel_ptr = in(reg) &pixel,
+                    // input
+                    pixel = in(reg) pixel,
                     last_pixel_ptr = in(reg) prev_pixel,
                     bias = in(reg) 0x00020202,
 

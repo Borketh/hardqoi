@@ -276,20 +276,20 @@ unsafe fn load_one_luma(op_ptr: *const u16, prev_ptr: *const [u8; 4], output_ptr
 
         // load the OP_LUMA as one word and copy 2nd byte out
         "mov        {db_dg:x},      [{op_ptr}]",
-        "mov        {dr},           {db_dg:h}", // the byte contains both blue and red
+        "mov        {dr:l},         {db_dg:h}", // the byte contains both blue and red
 
         // isolate the real values of [dr - dg + 8, dg + 32, db - dg + 8]
-        "shr        {dr},           4",
+        "shr        {dr:l},         4",
         "and        {db_dg:x},      3903",      // 0x0f3f
 
         // remove bias from deltas and apply them to the previous pixel
         // abuse the hell out of the add circuit's reciprocal throughput of 0.25
         "sub        {db_dg:l},      40",        // push dg's bias over to apply to dr and db
         "add        {db_dg:h},      {db_dg:l}",
-        "add        {dr},           {db_dg:l}",
+        "add        {dr:l},         {db_dg:l}",
         "add        {db_dg:l},      8",         // correct the over-bias above
         "add        {alpha_blue:l}, {db_dg:h}",
-        "add        {green_red:l},  {dr}",
+        "add        {green_red:l},  {dr:l}",
         "add        {green_red:h},  {db_dg:l}",
 
         // write output directly to buffer
@@ -301,7 +301,7 @@ unsafe fn load_one_luma(op_ptr: *const u16, prev_ptr: *const [u8; 4], output_ptr
         output      = in(reg)        output_ptr,
 
         db_dg       = out(reg_abcd)  _,
-        dr          = out(reg_byte)  _,
+        dr          = out(reg_abcd)  _,
         alpha_blue  = out(reg_abcd)  _,
         green_red   = out(reg_abcd)  _,
 

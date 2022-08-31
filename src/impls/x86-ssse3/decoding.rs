@@ -18,7 +18,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
     let mut previous_pixel_ptr: *const [u8; 4] = &[0, 0, 0, 255u8];
 
     // if the first op is a run, black ends up not in the HIA because of the hash-skipping behaviour
-    if (QOI_OP_RUN + 1..QOI_OP_RGB).contains(&input[pos]) {
+    if (QOI_OP_RUN..QOI_OP_RGB).contains(&input[pos]) {
         // this fixes that
         hash_indexed_array.push(unsafe { *previous_pixel_ptr });
     }

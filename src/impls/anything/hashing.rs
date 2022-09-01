@@ -2,8 +2,6 @@ pub use crate::{HashIndexedArray, Hashing};
 
 impl Hashing for HashIndexedArray {
     fn update(&mut self, pixel_feed: &[[u8; 4]]) {
-        //println!("Hashing {} pixels", pixel_feed.len());
-        //dbg!(pixel_feed);
         let hashes = hashes_rgba(pixel_feed);
         for i in 0..hashes.len() {
             self.indices_array[hashes[i] as usize] = pixel_feed[i];

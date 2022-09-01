@@ -1,12 +1,13 @@
 use bytemuck::cast_slice;
 use core::arch::asm;
 
-use crate::common::{
-    QOIHeader, END_8, MAGIC_QOIF, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
-    QOI_OP_RUN,
-};
+use crate::common::{QOIHeader, END_8, MAGIC_QOIF};
 
 use super::hashing::hashes_rgba;
+
+#[path = "contexts.rs"]
+mod contexts;
+use contexts::EncodeContext;
 
 pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize, (usize, usize)> {
     buf.extend(MAGIC_QOIF);
@@ -27,32 +28,27 @@ fn encode_pixels(
     output_buffer: &mut Vec<u8>,
     size: usize,
 ) -> Result<usize, (usize, usize)> {
-    let pixels: &[u32] = cast_slice::<u8, u32>(raw);
-    debug_assert_eq!(size, pixels.len());
+    let mut encode_context: EncodeContext = EncodeContext::new(
+        cast_slice::<u8, u32>(raw),
+        output_buffer,
+        hashes_rgba(raw, raw.len() / 4),
+    );
 
-    let hashes: Vec<u8> = hashes_rgba(raw, pixels.len());
+    while encode_context.get_pos() < size {
+        let pixel = encode_context.get_pixel();
+        let pixel_of_same_hash = encode_context.swap_hash();
 
-    let mut hash_indexed_array: [u32; 64] = [0u32; 64];
-    let mut pos = 0;
-    let mut prev_pixel: &u32 = &0xff000000;
+        if pixel == encode_context.get_previous_pixel() {
+            let (max_runs, last_run) = encode_context.find_run_length_at_current_position();
+            encode_context.write_run(max_runs, last_run);
 
-    while pos < size {
-        let pixel = pixels[pos];
-        let pixel_of_same_hash = hash_swap(&mut hash_indexed_array, pixel, hashes[pos]);
-
-        if pixel == *prev_pixel {
-            unsafe {
-                let current_ptr = pixels.as_ptr().add(pos);
-                let (max_runs, last_run) = find_run_length(current_ptr, &mut pos, size);
-                write_run(output_buffer, max_runs, last_run);
-            }
             continue;
         }
 
         if pixel == pixel_of_same_hash {
-            write_hash_index(output_buffer, hashes[pos]);
-        } else if (pixel & 0xff000000) != (*prev_pixel & 0xff000000) {
-            write_rgba(output_buffer, pixel);
+            encode_context.write_hash_index();
+        } else if (pixel & 0xff000000) != (encode_context.get_previous_pixel() & 0xff000000) {
+            encode_context.write_rgba();
         } else {
             let mut delta_pixel: u32;
 
@@ -61,7 +57,7 @@ fn encode_pixels(
             unsafe {
                 asm!(
                     "movd {delta_px_xmm}, {pixel:e}",
-                    "movd {last_pixel_xmm}, [{last_pixel_ptr}]",
+                    "movd {last_pixel_xmm}, {last_pixel:e}",
                     "psubb {delta_px_xmm}, {last_pixel_xmm}",
                     "movd {delta_px:e}, {delta_px_xmm}",
 
@@ -71,7 +67,7 @@ fn encode_pixels(
 
                     // input
                     pixel = in(reg) pixel,
-                    last_pixel_ptr = in(reg) prev_pixel,
+                    last_pixel = in(reg) encode_context.get_previous_pixel(),
                     bias = in(reg) 0x00020202,
 
                     // output ptrs
@@ -94,7 +90,7 @@ fn encode_pixels(
                 && delta_pixel_bias2[1] < 4u8
                 && delta_pixel_bias2[2] < 4u8
             {
-                write_diff(output_buffer, delta_pixel_bias2);
+                encode_context.write_diff(delta_pixel_bias2);
             } else {
                 let [dr, dg, db, _] = delta_pixel;
                 let dg_bias32 = dg.wrapping_add(32u8);
@@ -102,97 +98,20 @@ fn encode_pixels(
                 let db_dg_bias8 = db.wrapping_sub(dg).wrapping_add(8u8);
 
                 if dg_bias32 < 64 && dr_dg_bias8 < 16 && db_dg_bias8 < 16 {
-                    write_luma(output_buffer, dg_bias32, dr_dg_bias8, db_dg_bias8);
+                    encode_context.write_luma(dg_bias32, dr_dg_bias8, db_dg_bias8);
                 } else {
-                    write_rgb(output_buffer, pixel);
+                    encode_context.write_rgb();
                 }
             }
         }
 
-        prev_pixel = &pixels[pos];
-        pos += 1;
+        encode_context.update_pos();
     }
 
-    if pos == size {
-        Ok(pos)
+    let last_pos = encode_context.get_pos();
+    return if last_pos == size {
+        Ok(last_pos)
     } else {
-        Err((pos, size))
-    }
-}
-
-fn write_rgba(encoded_buf: &mut Vec<u8>, pixel: u32) {
-    encoded_buf.push(QOI_OP_RGBA);
-    encoded_buf.extend(pixel.to_ne_bytes());
-}
-
-fn write_rgb(encoded_buf: &mut Vec<u8>, pixel: u32) {
-    encoded_buf.extend(((pixel << 8) | QOI_OP_RGB as u32).to_ne_bytes())
-}
-
-fn hash_swap(history_by_hash: &mut [u32; 64], pixel: u32, hash: u8) -> u32 {
-    debug_assert!(hash < 64);
-    core::mem::replace(&mut history_by_hash[hash as usize], pixel)
-}
-
-fn write_hash_index(encoded_buf: &mut Vec<u8>, hash: u8) {
-    encoded_buf.push(QOI_OP_INDEX | hash);
-}
-
-fn write_diff(encoded_buf: &mut Vec<u8>, diff_px: [u8; 4]) {
-    encoded_buf.push(QOI_OP_DIFF | diff_px[0] << 4 | diff_px[1] << 2 | diff_px[2]);
-}
-
-fn write_luma(encoded_buf: &mut Vec<u8>, dg: u8, dr_dg: u8, db_dg: u8) {
-    encoded_buf.push(QOI_OP_LUMA | dg);
-    encoded_buf.push((dr_dg << 4) | db_dg);
-}
-
-#[inline(always)]
-unsafe fn write_run(encoded_buf: &mut Vec<u8>, max_runs: usize, remainder: usize) {
-    let rem_op = QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN);
-    let additional = max_runs;
-
-    if max_runs > 0 {
-        encoded_buf.reserve_exact(additional);
-        let start_ptr = encoded_buf.as_mut_ptr_range().end;
-        asm!(
-            "cld",
-            "rep stosb",
-            inout("rcx") additional => _,
-            inout("rdi") start_ptr => _,
-            in("al") 0xfdu8,
-        );
-        encoded_buf.set_len(encoded_buf.len() + additional);
-        if remainder != 0 {
-            encoded_buf.push(rem_op);
-        }
-    } else {
-        encoded_buf.push(rem_op);
-    }
-}
-
-#[inline(always)]
-unsafe fn find_run_length(start_ptr: *const u32, pos: &mut usize, size: usize) -> (usize, usize) {
-    let mut end_ptr: *const u32;
-
-    asm!(
-        "cld",
-        "mov eax, [rdi]",
-        "repe scasd",
-        inout("rdi") start_ptr => end_ptr,
-        inout("rcx") (size - *pos) + 1 => _,
-        out("eax") _
-    );
-
-    let actual_end_ptr = end_ptr.sub(1);
-
-    let total_run_length = actual_end_ptr.offset_from(start_ptr);
-    debug_assert!(total_run_length > 0);
-    let total_run_length = total_run_length as usize;
-    *pos += total_run_length;
-
-    let n_max_runs = total_run_length / 62;
-    let remaining_run = total_run_length % 62;
-
-    (n_max_runs, remaining_run)
+        Err((last_pos, size))
+    };
 }

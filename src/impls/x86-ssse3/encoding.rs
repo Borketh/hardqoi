@@ -5,9 +5,9 @@ use crate::common::{QOIHeader, END_8, MAGIC_QOIF};
 
 use super::hashing::hashes_rgba;
 
-#[path = "contexts.rs"]
-mod contexts;
-use contexts::EncodeContext;
+#[path = "encode_context.rs"]
+mod encode_context;
+use encode_context::EncodeContext;
 
 pub fn encode(raw: &Vec<u8>, meta: QOIHeader, buf: &mut Vec<u8>) -> Result<usize, (usize, usize)> {
     buf.extend(MAGIC_QOIF);

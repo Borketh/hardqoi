@@ -11,12 +11,27 @@ impl Hashing for HashIndexedArray {
         if len == 0 {
             return;
         } else if len == 1 {
-            self.indices_array[hash_rgba(pixel_feed[0]) as usize] = pixel_feed[0];
+            // self.indices_array[hash_rgba(pixel_feed[0]) as usize] = pixel_feed[0];
+            unsafe {
+                asm!(
+                    "lea rdi, [{dest_root} + 4*{dest_offset}]",
+                    "movsd",
+                    dest_root = in(reg) &self.indices_array,
+                    dest_offset = in(reg) hash_rgba(pixel_feed[0]),
+                    in("rsi") &pixel_feed[0],
+                    out("rdi") _,
+                )
+            }
         } else {
             let bytes = bytemuck::cast_vec::<[u8; 4], u8>(Vec::from(pixel_feed));
             let hashes = hashes_rgba(&bytes, len);
             for i in 0..hashes.len() {
-                self.indices_array[hashes[i] as usize] = pixel_feed[i];
+                unsafe {
+                    *self
+                        .indices_array
+                        .get_unchecked_mut(*hashes.get_unchecked(i) as usize) =
+                        *pixel_feed.get_unchecked(i);
+                }
             }
         }
     }
@@ -28,7 +43,7 @@ impl Hashing for HashIndexedArray {
     fn push(&mut self, pixel: [u8; 4]) -> ([u8; 4], u8) {
         let hash = hash_rgba(pixel);
         let pixel2 = core::mem::replace(&mut self.indices_array[hash as usize], pixel);
-        (pixel2, hash)
+        (pixel2, hash as u8)
     }
 
     fn new() -> Self {
@@ -118,9 +133,8 @@ unsafe fn simd_hashes_many(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
 
     return hashes;
 }
-
-/// A stripped down SIMD hashing for pixel counts between 2 and 8 (inclusive)
 #[inline(always)]
+/// A stripped down SIMD hashing for pixel counts between 2 and 8 (inclusive)
 unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     let mut output: Vec<u8> = Vec::with_capacity(8);
 
@@ -142,7 +156,7 @@ unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
         // cheating % 64
         "pand           {a},                {mod_64_mask}",     // a is now the hashes of the pixels originally in a and b
 
-        "packuswb       {a},                {a}",               // a becomes the final 8 hashes in byte form
+        "packuswb       {a},                {a}",               // a becomes the final 8 hashes in byte form, duplicated
         "movq           [{hashes_ptr}],     {a}",               // put a into list of hash results
 
         in_ptr          = in(reg)           bytes.as_ptr(),
@@ -163,7 +177,16 @@ unsafe fn simd_hashes_lt8(bytes: &Vec<u8>, count: usize) -> Vec<u8> {
     return output;
 }
 
-/// The simplest hash function
-fn hash_rgba(pixel: [u8; 4]) -> u8 {
-    ((pixel[0] * 3) + (pixel[1] * 5) + (pixel[2] * 7) + (pixel[3] * 11)) & 0b00111111u8
+/// A variation on zakarumych's hashing function from rapid-qoi, but with one less & instruction
+fn hash_rgba(pixel: [u8; 4]) -> u64 {
+    let pixel = u32::from_ne_bytes(pixel) as u64;
+
+    // the first two lines do the same as rqpid-qoi
+    let duplicated = pixel * 0x0000000100000001_u64;
+    let a0g00b0r = duplicated & 0xff00ff0000ff00ff_u64;
+    // this magic number puts the hash in the top 6 bits instead of the top 8
+    let hash_high6 = a0g00b0r * 0x0c001c000014002c_u64;
+    let hash = hash_high6 >> 58; // now there's no need for the last mask
+
+    return hash;
 }

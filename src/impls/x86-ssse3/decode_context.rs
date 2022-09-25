@@ -1,5 +1,5 @@
-#![no_std]
 use super::super::hashing::{HashIndexedArray, Hashing};
+use crate::alloc::vec::Vec;
 use crate::common::{QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN};
 use core::arch::asm;
 
@@ -9,8 +9,6 @@ const DIFF_MUL_DUP: u32 = 0x01004010_u32;
 const DIFF_MASK: u32 = 0x03030303_u32;
 
 // ed is the encoding duration
-
-#[derive(Debug)]
 pub(crate) struct DecodeContext<'ed> {
     input_buffer: &'ed Vec<u8>,
     pub(crate) output_buffer: &'ed mut Vec<[u8; 4]>,
@@ -87,6 +85,7 @@ impl<'ed> DecodeContext<'ed> {
         return self.input_buffer[self.input_position + offset];
     }
 
+    #[inline(always)]
     pub(crate) unsafe fn update_previous_ptr(&mut self) {
         self.previous_pixel = self.get_output_ptr() as *const u32;
     }
@@ -218,6 +217,7 @@ impl<'ed> DecodeContext<'ed> {
         return (op_run & !QOI_OP_RUN) as usize + 1;
     }
 
+    #[inline(always)]
     unsafe fn scan_run_length(&mut self) -> usize {
         let start_ptr = self.get_byte_ref() as *const u8;
         let mut end_ptr: *const u8;

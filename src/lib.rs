@@ -1,12 +1,9 @@
+#![no_std]
+pub extern crate alloc;
+
 #[path = "impls/mod.rs"]
 mod impls;
 pub use impls::implementation::*;
-
-pub fn write_qoi(data: &Vec<u8>, filename: &str) -> Result<(), std::io::Error> {
-    let mut f = std::fs::File::create(filename).expect("Unable to save QOI image!");
-    use std::io::Write;
-    f.write_all(data)
-}
 
 pub struct HashIndexedArray {
     pub(crate) indices_array: [[u8; 4]; 64],

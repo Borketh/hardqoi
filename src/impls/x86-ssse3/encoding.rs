@@ -1,3 +1,4 @@
+use crate::alloc::vec::Vec;
 use bytemuck::cast_slice;
 use core::arch::asm;
 

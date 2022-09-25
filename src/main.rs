@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use image::{io::Reader, DynamicImage, ImageFormat};
 
 use crate::common::QOIHeader;
-use crate::lib::{decoding::decode, encoding::encode, write_qoi};
+use crate::lib::{decoding::decode, encoding::encode};
 pub use lib::*;
 
 mod lib;
@@ -87,4 +87,10 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
             expected, read
         ),
     }
+}
+
+pub fn write_qoi(data: &Vec<u8>, filename: &str) -> Result<(), std::io::Error> {
+    let mut f = std::fs::File::create(filename).expect("Unable to save QOI image!");
+    use std::io::Write;
+    f.write_all(data)
 }

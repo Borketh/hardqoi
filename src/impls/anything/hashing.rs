@@ -1,3 +1,4 @@
+use crate::alloc::vec::Vec;
 pub use crate::{HashIndexedArray, Hashing};
 
 impl Hashing for HashIndexedArray {

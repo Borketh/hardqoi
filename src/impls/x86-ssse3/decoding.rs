@@ -1,3 +1,4 @@
+use crate::alloc::vec::Vec;
 use crate::common::{
     QOIHeader, END_8, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN,
 };
@@ -29,6 +30,7 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
             QOI_OP_RGB => unsafe {
                 ctx.load_one_rgb();
             },
+            // it turns out that the compiler can make this into a LUT without me manually doing so
             _ => match next_op & 0b11000000 {
                 QOI_OP_DIFF => unsafe {
                     ctx.load_diff();
@@ -42,8 +44,8 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<[u8; 4]>) -> Result<(), (usize, 
                 QOI_OP_INDEX => unsafe {
                     ctx.load_index();
                 },
-                _ => panic!("YOUR CPU'S AND GATE IS BROKEN"),
-            }, // end match 2-bit
+                _ => unsafe { unreachable_unchecked() },
+            },
         } // end match 8-bit
     } // end loop
 

@@ -1,3 +1,4 @@
+use crate::alloc::vec::Vec;
 use crate::common::{QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN};
 use core::arch::asm;
 use core::mem::replace;

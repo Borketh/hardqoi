@@ -1,3 +1,4 @@
+use crate::alloc::vec::Vec;
 use bytemuck::cast_slice;
 use wrap_math_pixel::{BIAS_2, BLACK, PIXEL, ZERO_PIXEL};
 

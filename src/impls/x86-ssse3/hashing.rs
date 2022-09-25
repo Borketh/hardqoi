@@ -1,6 +1,7 @@
 static MOD64MASK: u64 = 0x003f003f003f003fu64;
 static HASHING_NUMS_RGBA: u64 = 0x0b0705030b070503u64;
 
+use crate::alloc::vec::Vec;
 pub use crate::{HashIndexedArray, Hashing};
 use core::arch::asm;
 

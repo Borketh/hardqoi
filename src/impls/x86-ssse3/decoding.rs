@@ -2,6 +2,7 @@ use crate::alloc::vec::Vec;
 use crate::common::{
     QOIHeader, END_8, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN,
 };
+use core::hint::unreachable_unchecked;
 #[path = "decode_context.rs"]
 mod decode_context;
 use decode_context::DecodeContext;

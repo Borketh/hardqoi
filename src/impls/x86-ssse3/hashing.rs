@@ -11,15 +11,14 @@ impl Hashing for HashIndexedArray {
         if len == 0 {
             return;
         } else if len == 1 {
-            // self.indices_array[hash_rgba(pixel_feed[0]) as usize] = pixel_feed[0];
+            let pixel = pixel_feed[0];
+
             unsafe {
                 asm!(
-                    "lea rdi, [{dest_root} + 4*{dest_offset}]",
-                    "movsd",
-                    dest_root = in(reg) &self.indices_array,
-                    dest_offset = in(reg) hash_rgba(pixel_feed[0]),
-                    in("rsi") &pixel_feed[0],
-                    out("rdi") _,
+                    "mov [{origin} + 4*{hash}], {pixel:e}",
+                    origin = in(reg) &self.indices_array,
+                    hash = in(reg) hash_rgba(pixel),
+                    pixel = in(reg) u32::from_ne_bytes(pixel)
                 )
             }
         } else {

@@ -11,14 +11,21 @@ image = {version = "^0.24.2", optional = true }
 
 [features]
 default = ["image_compat"]
-use_std = []
-use_simd = []
 image_compat = ["dep:image"]
+shut-up = []
+force-compile = []
+simd-x4 = []
+simd-m4 = ["simd-x4"]
+simd-x8 = ["simd-x4"]
+simd-m8 = ["simd-x8", "simd-m4"]
+simd-x16 = ["simd-x8"]
+simd-m16 = ["simd-x16"]
+simd-max = []
 
 [[bin]]
 name = "hardqoi"
 path = "src/main.rs"
-test = false
+test = true
 bench = false
 doc = false
 
@@ -29,4 +36,7 @@ test = false
 bench = false
 doc = false
 crate-type = ["lib"]
+
+[build-dependencies]
+lazy_static = "1.4.0"
 

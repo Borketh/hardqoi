@@ -1,15 +1,21 @@
+extern crate alloc;
 extern crate bytemuck;
 
+use bytemuck::cast_slice;
 use std::ops::Div;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use image::{io::Reader, DynamicImage, ImageFormat};
 
-use crate::common::QOIHeader;
-use crate::lib::{decoding::decode, encoding::encode};
+use lib::common::QOIHeader;
+use lib::{decode, encode};
+
+use crate::common::RGBA;
 pub use lib::*;
 
+// keep this here so imports work when building with this as root
+#[path = "./lib.rs"]
 mod lib;
 
 fn main() {
@@ -40,28 +46,28 @@ pub fn open_file(path: &str) -> (ImageFormat, DynamicImage) {
 fn img_to_qoi(mut img: DynamicImage, filename: &str) {
     let meta = QOIHeader::from(&img);
     img = DynamicImage::ImageRgba8(img.to_rgba8());
-    let raw = img.as_bytes().to_vec();
+
+    let raw = cast_slice::<u8, RGBA>(img.as_bytes()).to_vec();
 
     let mut qoi_data = Vec::with_capacity(raw.len() / 8);
-    match encode(&raw, meta, &mut qoi_data) {
+    match encode(&raw, &mut qoi_data, meta) {
         Ok(_) => write_qoi(&qoi_data, filename).unwrap(),
         Err((found, expected)) => panic!(
             "Expected {} pixels, found {} pixels instead",
             expected, found
         ),
     };
-    let mut decoded: Vec<[u8; 4]> = Vec::with_capacity(raw.len() / 4);
+    let mut decoded: Vec<RGBA> = Vec::with_capacity(raw.len());
     match decode(&qoi_data, &mut decoded) {
         Ok(()) => {
-            let rawpx = bytemuck::cast_slice::<u8, [u8; 4]>(&raw);
             let decodedpx = decoded.as_slice();
             assert_eq!(
-                rawpx.len(),
+                raw.len(),
                 decodedpx.len(),
                 "Input and output sizes do not match!"
             );
             for i in 0..decoded.len() {
-                assert_eq!(rawpx[i], decodedpx[i], "There is a discrepancy between the input and the decoded output at position {}: Expected: {:?}, Got: {:?}", i, rawpx[i], decodedpx[i]);
+                assert_eq!(raw[i], decodedpx[i], "There is a discrepancy between the input and the decoded output at position {}: Expected: 0x{:08x}, Got: 0x{:08x}", i, raw[i], decodedpx[i]);
             }
             println!("Successful trial run, Beginning benchmarking");
 
@@ -73,7 +79,7 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
                 qoi_data.clear();
                 decoded.clear();
                 let encode_time = Instant::now();
-                encode(&raw, meta, &mut qoi_data).unwrap();
+                encode(&raw, &mut qoi_data, meta).unwrap();
                 encode_time_sum += encode_time.elapsed();
                 let decode_time = Instant::now();
                 decode(&qoi_data, &mut decoded).unwrap();
@@ -89,7 +95,7 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
     }
 }
 
-pub fn write_qoi(data: &Vec<u8>, filename: &str) -> Result<(), std::io::Error> {
+pub fn write_qoi(data: &[u8], filename: &str) -> Result<(), std::io::Error> {
     let mut f = std::fs::File::create(filename).expect("Unable to save QOI image!");
     use std::io::Write;
     f.write_all(data)

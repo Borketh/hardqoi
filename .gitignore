@@ -4,3 +4,6 @@ Cargo.lock
 /test/stephansquintet-jameswebb-giant.png
 /test/*.qoi
 /.incremental
+/legacy_reference
+perf.*
+flamegraph.svg

@@ -1,24 +1,23 @@
 #![no_std]
-pub extern crate alloc;
+#![allow(clippy::unusual_byte_groupings)]
 
-#[path = "impls/mod.rs"]
-mod impls;
-pub use impls::implementation::*;
+extern crate alloc;
+extern crate bytemuck;
 
-pub struct HashIndexedArray {
-    pub(crate) indices_array: [[u8; 4]; 64],
-}
+#[path = "./arch_switch.rs"]
+mod arch_switch;
+pub use arch_switch::implementation::{decode::decode, encode::encode};
 
-pub trait Hashing {
-    fn update(&mut self, pixel_feed: &[[u8; 4]]);
-    fn fetch(&mut self, hash: u8) -> [u8; 4];
-    fn push(&mut self, pixel: [u8; 4]) -> ([u8; 4], u8);
-    fn new() -> Self;
+use common::*;
+
+pub(crate) trait Hashing {
+    fn update(&mut self, pixel_feed: &[RGBA]);
+    fn fetch(&mut self, hash: HASH) -> RGBA;
+    fn swap(&mut self, pixel: &RGBA) -> (RGBA, HASH);
 }
 
 pub mod common {
     use core::{array::IntoIter, iter::Iterator};
-
     use image::{DynamicImage, GenericImageView};
 
     pub const MAGIC_QOIF: [u8; 4] = *b"qoif";
@@ -29,6 +28,10 @@ pub mod common {
     pub const QOI_OP_LUMA: u8 = 0b10_000000_u8;
     pub const QOI_OP_RUN: u8 = 0b11_000000_u8;
     pub const END_8: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
+    pub type RGBA = u32; // four bytes pixel
+    pub type HASH = u8; // 6 bit pixel hash
+    pub type SBPX = u8; // byte subpixel
+    pub type HashIndexedArray = [RGBA; 64];
 
     #[derive(Clone, Copy)]
     pub struct QOIHeader {
@@ -40,18 +43,18 @@ pub mod common {
 
     impl From<&DynamicImage> for QOIHeader {
         fn from(img: &DynamicImage) -> Self {
-            let dims = img.dimensions();
+            let (width, height) = img.dimensions();
             Self {
-                width: dims.0,
-                height: dims.1,
+                width,
+                height,
                 has_alpha: img.color().has_alpha(),
-                linear_rgb: false, // TODO detect this somehow
+                linear_rgb: false, // TODO detect or parameterize this somehow
             }
         }
     }
 
-    impl From<[u8; 14]> for QOIHeader {
-        fn from(bytes: [u8; 14]) -> Self {
+    impl From<&[u8]> for QOIHeader {
+        fn from(bytes: &[u8]) -> Self {
             assert_eq!(
                 bytes[0..4],
                 MAGIC_QOIF,

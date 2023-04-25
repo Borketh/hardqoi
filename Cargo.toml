@@ -3,24 +3,20 @@ name = "hardqoi"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# [workspace]
+# members = ["src/x86_64/avx512encode"]
+
 
 [dependencies]
 bytemuck = "^1.10.0"
 image = {version = "^0.24.2", optional = true }
+raw-cpuid = "11.0.0"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
+# avx512encode = {package = "hardqoi-avx512encode", path = "src/x86_64/avx512encode", optional = true}
 
 [features]
 default = ["image_compat"]
 image_compat = ["dep:image"]
-shut-up = []
-force-compile = []
-simd-x4 = []
-simd-m4 = ["simd-x4"]
-simd-x8 = ["simd-x4"]
-simd-m8 = ["simd-x8", "simd-m4"]
-simd-x16 = ["simd-x8"]
-simd-m16 = ["simd-x16"]
-simd-max = []
 
 [[bin]]
 name = "hardqoi"
@@ -40,3 +36,5 @@ crate-type = ["lib"]
 [build-dependencies]
 lazy_static = "1.4.0"
 
+[profile.release]
+debug = true

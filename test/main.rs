@@ -8,20 +8,24 @@ use std::time::{Duration, Instant};
 
 use image::{io::Reader, DynamicImage, ImageFormat};
 
-use lib::common::QOIHeader;
-use lib::{decode, encode};
-
-use crate::common::RGBA;
-pub use lib::*;
-
-// keep this here so imports work when building with this as root
-#[path = "./lib.rs"]
-mod lib;
+use hardqoi::common::*;
+use hardqoi::*;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     let filename = &args[1];
+    let (format, image) = open_file(filename);
+    let new_filename = {
+        let format_ext = format!("{format:?}").to_ascii_lowercase();
+        filename.replace(format_ext.as_str(), "qoi")
+    };
+    img_to_qoi(image, new_filename.as_str());
+}
+
+#[test]
+fn test_wonke() {
+    let filename = "test/wonke.png";
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();

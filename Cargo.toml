@@ -18,15 +18,15 @@ lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 default = ["image_compat"]
 image_compat = ["dep:image"]
 
-[[bin]]
-name = "hardqoi"
-path = "src/main.rs"
+[[test]]
+name = "hardqoi-tester"
+path = "test/main.rs"
 test = true
 bench = false
 doc = false
 
 [lib]
-name = "libhardqoi"
+name = "hardqoi"
 path = "src/lib.rs"
 test = false
 bench = false
@@ -38,3 +38,7 @@ lazy_static = "1.4.0"
 
 [profile.release]
 debug = true
+
+[profile.dev]
+opt-level = 3
+overflow-checks = false

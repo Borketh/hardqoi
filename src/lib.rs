@@ -18,6 +18,7 @@ pub(crate) trait Hashing {
 
 pub mod common {
     use core::{array::IntoIter, iter::Iterator};
+    #[cfg(feature = "image_compat")]
     use image::{DynamicImage, GenericImageView};
 
     pub const MAGIC_QOIF: [u8; 4] = *b"qoif";
@@ -41,6 +42,7 @@ pub mod common {
         pub linear_rgb: bool,
     }
 
+    #[cfg(feature = "image_compat")]
     impl From<&DynamicImage> for QOIHeader {
         fn from(img: &DynamicImage) -> Self {
             let (width, height) = img.dimensions();

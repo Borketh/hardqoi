@@ -137,7 +137,8 @@ impl<'ed> DecodeContext<'ed> {
 
     #[inline(always)]
     unsafe fn load_one_rgba(&mut self) {
-        *self.get_output_ptr() = *(self.get_byte_ref() as *const u8 as *const RGBA);
+        self.get_output_ptr()
+            .write_unaligned((self.get_byte_ref() as *const u8 as *const RGBA).read_unaligned());
     }
 
     pub(crate) unsafe fn load_one_rgb(&mut self) {

@@ -6,6 +6,7 @@ use crate::common::{
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::mem::replace;
+use crate::arch_switch::implementation::hashing::hash_rgba;
 
 // ed is the encoding duration
 pub(crate) struct EncodeContext<'ed> {
@@ -34,19 +35,26 @@ impl<'ed> EncodeContext<'ed> {
 
     #[inline(never)]
     pub fn initialize_hashes(&mut self) {
-        unsafe {
+        let (leftover_pixel_marker, end_of_current_hashes) = unsafe {
             let chunk_count = self.pixel_count / HASH_RGBA_MANY.hash_chunk_size();
-            // print!("The hash buffer starts at {:?} which is ", self.hashes.as_ptr());
-            // if self.hashes.as_ptr().align_offset(32) > 0 {
-            //     print!("not ");
-            // }
-            // println!("aligned to 32 bytes");
-            HASH_RGBA_MANY.hash_chunks(
-                self.input_pixels.as_ptr(),
-                self.hashes.as_mut_ptr(),
+
+            let start_pixel_ptr = self.input_pixels.as_ptr();
+            let start_hash_ptr = self.hashes.as_mut_ptr();
+            let (end_pixel_ptr, end_hash_ptr) = HASH_RGBA_MANY.hash_chunks(
+                start_pixel_ptr,
+                start_hash_ptr,
                 chunk_count,
             );
+            let pixel_distance = end_pixel_ptr.offset_from(start_pixel_ptr);
+            let hash_distance = end_hash_ptr.offset_from(start_hash_ptr);
             self.hashes.set_len(self.pixel_count);
+            (pixel_distance as usize, hash_distance as usize)
+        };
+        if leftover_pixel_marker == self.input_pixels.len() {
+            return;
+        }
+        for (offset, pixel) in self.input_pixels[leftover_pixel_marker..].iter().enumerate() {
+            self.hashes[end_of_current_hashes + offset] = hash_rgba(pixel);
         }
     }
 

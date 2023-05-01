@@ -1,7 +1,7 @@
 use super::HASH_RGBA_MANY;
 use crate::common::{
-    QOIHeader, END_8, HASH, MAGIC_QOIF, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB,
-    QOI_OP_RGBA, QOI_OP_RUN, RGBA,
+    QOIHeader, END_8, HASH, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
+    QOI_OP_RUN, RGBA,
 };
 use alloc::vec::Vec;
 use core::arch::asm;
@@ -116,22 +116,14 @@ impl<'ed> EncodeContext<'ed> {
     }
 
     #[inline(always)]
-    pub fn write_run(&mut self, max_runs: usize, remainder: usize) {
+    pub fn write_run(&mut self, full_runs: usize, remainder: usize) {
         let rem_op = QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN);
-        let additional = max_runs;
 
-        if max_runs > 0 {
-            self.output_bytes.reserve_exact(additional);
+        if full_runs > 0 {
+            self.output_bytes.reserve_exact(full_runs);
             unsafe {
-                asm!(
-                "cld",
-                "rep stosb",
-                inout("rcx") additional => _,
-                inout("rdi") self.get_output_ptr() => _,
-                in("al") 0xfdu8,
-                );
-                self.output_bytes
-                    .set_len(self.output_bytes.len() + additional);
+                self.get_output_ptr().write_bytes(0xfdu8, full_runs);
+                self.output_bytes.set_len(self.output_bytes.len() + full_runs);
             }
             if remainder != 0 {
                 self.output_bytes.push(rem_op);
@@ -145,7 +137,7 @@ impl<'ed> EncodeContext<'ed> {
     pub fn find_run_length_at_current_position(&mut self) -> (usize, usize) {
         let total_run_length = unsafe {
             let start_ptr = self.get_pixel_ptr();
-            let mut end_ptr: *const RGBA;
+            let end_ptr: *const RGBA;
 
             asm!(
                 "cld",
@@ -177,7 +169,6 @@ pub fn encode(
     output_bytes: &mut Vec<u8>,
     metadata: QOIHeader,
 ) -> Result<(), (usize, usize)> {
-    output_bytes.extend(MAGIC_QOIF);
     output_bytes.extend(metadata.to_bytes());
 
     let pixel_count = metadata.image_size();

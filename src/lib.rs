@@ -17,7 +17,7 @@ pub(crate) trait Hashing {
 }
 
 pub mod common {
-    use core::{array::IntoIter, iter::Iterator};
+    use alloc::vec::Vec;
     #[cfg(feature = "image_compat")]
     use image::{DynamicImage, GenericImageView};
 
@@ -72,11 +72,14 @@ pub mod common {
     }
 
     impl QOIHeader {
-        pub fn to_bytes(&self) -> impl Iterator<Item = u8> {
-            let w_bytes: IntoIter<u8, 4> = self.width.to_be_bytes().into_iter();
-            let h_bytes: IntoIter<u8, 4> = self.height.to_be_bytes().into_iter();
-            let other: [u8; 2] = [self.has_alpha as u8 + 3u8, self.linear_rgb as u8];
-            w_bytes.chain(h_bytes).chain(other.into_iter())
+        pub fn to_bytes(&self) -> Vec<u8> {
+            let mut bytes = Vec::with_capacity(14);
+            bytes.extend(MAGIC_QOIF);
+            bytes.extend(self.width.to_be_bytes());
+            bytes.extend(self.height.to_be_bytes());
+            bytes.push(self.has_alpha as u8 + 3u8);
+            bytes.push(self.linear_rgb as u8);
+            bytes
         }
 
         pub fn image_size(&self) -> usize {

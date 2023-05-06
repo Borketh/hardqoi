@@ -1,0 +1,8 @@
+/target
+/.idea
+Cargo.lock
+/test/stephansquintet-jameswebb-giant.png
+/test/*.qoi
+/.incremental
+perf.*
+flamegraph.svg

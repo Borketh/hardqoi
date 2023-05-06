@@ -1,0 +1,27 @@
+[package]
+name = "hardqoi-avx512encode"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.hardqoi]
+path = "../../../../hardqoi"
+version = "0.1"
+default-features = false
+
+[dev-dependencies]
+bytemuck = "^1.10.0"
+image = "^0.24.2"
+
+[dev-dependencies.hardqoi]
+path = "../../../../hardqoi"
+version = "0.1"
+features = ["image_compat"]
+
+[[test]]
+name = "hardqoi-avx512encode-tester"
+path = "test/main.rs"
+test = true
+bench = false
+doc = false

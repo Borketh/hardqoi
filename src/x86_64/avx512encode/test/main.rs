@@ -1,15 +1,18 @@
-extern crate alloc;
 extern crate bytemuck;
+extern crate image;
 
 use bytemuck::cast_slice;
 use std::ops::Div;
 use std::path::Path;
 use std::time::{Duration, Instant};
+use std::io::Write;
+
 
 use image::{io::Reader, DynamicImage, ImageFormat};
 
 use hardqoi::common::*;
-use hardqoi::*;
+use hardqoi::decode;
+use hardqoi_avx512encode::encode;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -25,7 +28,7 @@ fn main() {
 
 #[test]
 fn test_wonke() {
-    let filename = "test/wonke.png";
+    let filename = "../../../test/wonke.png";
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();
@@ -36,7 +39,7 @@ fn test_wonke() {
 
 #[test]
 fn test_thonk() {
-    let filename = "test/thonk.png";
+    let filename = "../../../test/thonk.png";
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();
@@ -47,7 +50,7 @@ fn test_thonk() {
 
 #[test]
 fn test_jw() {
-    let filename = "test/stephansquintet-jameswebb-giant.png";
+    let filename = "../../../test/stephansquintet-jameswebb-giant.png";
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();
@@ -58,7 +61,7 @@ fn test_jw() {
 
 #[test]
 fn test_jw_smol() {
-    let filename = "test/stephansquintet-jameswebb-clip.png";
+    let filename = "../../../test/stephansquintet-jameswebb-clip.png";
     let (format, image) = open_file(filename);
     let new_filename = {
         let format_ext = format!("{format:?}").to_ascii_lowercase();
@@ -66,6 +69,7 @@ fn test_jw_smol() {
     };
     img_to_qoi(image, new_filename.as_str());
 }
+
 
 pub fn open_file(path: &str) -> (ImageFormat, DynamicImage) {
     let path = Path::new(path);
@@ -134,6 +138,5 @@ fn img_to_qoi(mut img: DynamicImage, filename: &str) {
 
 pub fn write_qoi(data: &[u8], filename: &str) -> Result<(), std::io::Error> {
     let mut f = std::fs::File::create(filename).expect("Unable to save QOI image!");
-    use std::io::Write;
     f.write_all(data)
 }

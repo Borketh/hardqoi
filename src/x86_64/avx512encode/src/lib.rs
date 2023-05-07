@@ -6,7 +6,10 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::arch::x86_64::*;
 use core::ops::Range;
-use hardqoi::common::*;
+use hardqoi::common::{
+    QOIHeader, END_8, HASH, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
+    QOI_OP_RUN, RGBA,
+};
 
 pub fn encode(
     input_pixels: &Vec<RGBA>,
@@ -108,7 +111,6 @@ fn encode_singles(
 
         let hash = hash_rgba(pixel);
         if pixel == hia[hash as usize] {
-            // println!("This pixel is one that has remained in the hash cache.");
             unsafe {
                 output_ptr = output_ptr.push_var(hash | QOI_OP_INDEX);
             }
@@ -118,8 +120,6 @@ fn encode_singles(
 
         if is_alpha_different(pixel, *previous_pixel) {
             // all the other methods count on the alpha being the same, so we can't do much else
-            // yeet the pixel threefold
-            // println!("This pixel has a different alpha value than the previous one.");
             unsafe {
                 output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);
             }
@@ -136,24 +136,14 @@ fn encode_singles(
             _mm_maskz_sub_epi8(rgb_mask, pixel, previous_pixel)
         };
 
-        // println!("The delta from the last pixel is {:?}", unsafe {
-        //     let tmp = _mm_cvtsi128_si32(deltas).to_le_bytes();
-        //     (tmp[0] as i8, tmp[1] as i8, tmp[2] as i8)
-        // });
-
         let (biased_deltas, comparison) = unsafe {
             let bias_rgb = _mm_cvtsi32_si128(0x00020202);
             let biased_deltas = _mm_add_epi8(deltas, bias_rgb);
             let limit_rgb = _mm_add_epi8(bias_rgb, bias_rgb);
             let comparison = _mm_mask_cmplt_epu8_mask(rgb_mask, biased_deltas, limit_rgb);
-            // println!("{:?} < {:?} ?= {:016b}",
-            //          *(&biased_deltas as *const __m128i as *const [u8; 16]),
-            //          *(&limit_rgb as *const __m128i as *const [u8; 16]),
-            //          comparison.reverse_bits());
             (biased_deltas, comparison)
         };
         if comparison == rgb_mask {
-            // println!("This pixel is encodable with a DIFF");
             // each channel is less than 4
             let packed_result = unsafe {
                 let biased_delta = _mm_cvtsi128_si32(biased_deltas) as u32;
@@ -185,15 +175,10 @@ fn encode_singles(
             let limit_luma = _mm_add_epi8(bias_luma, bias_luma);
             let biased_deltas_luma = _mm_add_epi8(deltas_luma, bias_luma);
             let comparison = _mm_mask_cmplt_epu8_mask(0b1011, biased_deltas_luma, limit_luma);
-            // println!("{:?} < {:?} ?= {:016b}",
-            //          *(&biased_deltas_luma as *const __m128i as *const [u8; 16]),
-            //          *(&limit_luma as *const __m128i as *const [u8; 16]),
-            //          comparison.reverse_bits());
             (biased_deltas_luma, comparison)
         };
 
         if comparison == 0b1011 {
-            // println!("This pixel is encodable as a LUMA");
             // each channel is under the limit
             let (dg_db, dr) = unsafe {
                 (
@@ -206,9 +191,7 @@ fn encode_singles(
                 output_ptr = output_ptr.push_var(op_luma)
             }
         } else {
-            // println!("This pixel is encodable with a RGB");
             let op_rgb = pixel << 8 | QOI_OP_RGB as u32;
-            // println!("{:02x?}, {:08x}", op_rgb.to_le_bytes(), op_rgb);
             unsafe {
                 output_ptr = output_ptr.push_var(op_rgb);
             }
@@ -217,8 +200,7 @@ fn encode_singles(
         *previous_pixel = pixel;
     }
     unsafe { output_bytes.set_len_from_ptr(output_ptr) }
-    // println!("{:02x?}", output_bytes);
-    // panic!("whoopsie");
+
     return maybe_run_length;
 }
 

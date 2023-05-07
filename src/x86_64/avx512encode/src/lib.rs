@@ -245,8 +245,6 @@ unsafe fn encode_chunks(
         let mut chunk: __m512i;
         chunk = *chunk_pointer;
 
-        // println!("len {} cap {}, off {}", output_bytes.len(), output_bytes.capacity(), output_bytes.ptr_origin_distance(output_ptr));
-
         if let Some(run_length) = maybe_run_length.as_mut() {
             'traverse_run: // loop to continue handling a run
             loop {
@@ -301,17 +299,17 @@ unsafe fn encode_chunks(
                     maybe_run_length = Some(bit_count);
                     break 'chunk_rotation;
                 } else {
-                    // there will at most be 15
+                    // There will at most be 15 to encode as a run, which fits in one byte.
+                    // This means any run encoding can be within the already reserved space.
                     output_bytes.set_len_from_ptr(output_ptr);
-                    // output_bytes.reserve(1);
                     write_run(output_ptr, 0, bit_count);
                     output_bytes.add_len(1);
-                    output_ptr = output_bytes.get_write_head(); // reset instead of increment in case of reallocation
+                    output_ptr = output_ptr.add(1);
 
+                    // Since we can't rotate by a variable value, we use compress and expand instead
                     let chunk_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bit_count, chunk);
                     chunk = _mm512_mask_expand_epi32(chunk_shifted_left, !(u16::MAX >> bit_count), chunk);
 
-                    // Since we can't rotate by a variable value, we use compress and expand instead
                     let hashes_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bit_count, hashes_32b);
                     hashes_32b = _mm512_mask_expand_epi32(hashes_shifted_left, !(u16::MAX >> bit_count), hashes_32b);
 
@@ -459,7 +457,13 @@ unsafe fn maybe_write_run(output_bytes: &mut Vec<u8>, maybe_run_length: Option<u
 /// handled outside of the function.
 unsafe fn write_run(output_ptr: *mut u8, full_runs: usize, remainder: usize) -> usize {
     if full_runs > 0 {
-        output_ptr.write_bytes(0xfdu8, full_runs);
+        core::arch::asm!(
+            "cld",
+            "rep stosb",
+            in("rcx") full_runs,
+            in("rdi") output_ptr,
+            in("al") 0xfdu8,
+        );
     }
 
     let remainder_exists = remainder > 0;

@@ -29,6 +29,7 @@ pub fn encode(
     //     aligned_pixels.len() * 16,
     //     unaligned_end.len()
     // );
+
     let mut maybe_run_length: Option<usize> = None;
 
     if !unaligned_start.is_empty() {
@@ -61,7 +62,9 @@ pub fn encode(
         );
     }
 
-    maybe_write_run(output_bytes, maybe_run_length);
+    unsafe {
+        maybe_write_run(output_bytes, maybe_run_length);
+    }
 
     output_bytes.extend(END_8);
     Ok(())
@@ -78,7 +81,7 @@ fn encode_singles(
 ) -> Option<usize> {
     // temporary write space with enough space for 15 OP_RGBAs in case an image is that stubborn
     output_bytes.reserve_exact(15 * 5);
-    let mut out_ptr = unsafe { output_bytes.as_mut_ptr().add(output_bytes.len()) };
+    let mut output_ptr = unsafe { output_bytes.get_write_head() };
 
     'encoding_next_pixel: // this label is just for clarity
     for &pixel in pixels {
@@ -95,10 +98,9 @@ fn encode_singles(
             // within this function we only need one byte to encode it.
             // println!("This pixel is different, so we're finishing up a RUN");
             unsafe {
-                output_bytes.set_len(out_ptr.offset_from(output_bytes.as_ptr()) as usize);
+                output_bytes.set_len_from_ptr(output_ptr);
+                output_ptr = maybe_write_run(output_bytes, maybe_run_length);
             }
-            out_ptr = maybe_write_run(output_bytes, maybe_run_length);
-
             maybe_run_length = None;
 
             // We still need to deal with the current pixel now
@@ -108,8 +110,7 @@ fn encode_singles(
         if pixel == hia[hash as usize] {
             // println!("This pixel is one that has remained in the hash cache.");
             unsafe {
-                out_ptr.write(hash | QOI_OP_INDEX);
-                out_ptr = out_ptr.add(1);
+                output_ptr = output_ptr.push_var(hash | QOI_OP_INDEX);
             }
             *previous_pixel = pixel;
             continue 'encoding_next_pixel;
@@ -120,9 +121,7 @@ fn encode_singles(
             // yeet the pixel threefold
             // println!("This pixel has a different alpha value than the previous one.");
             unsafe {
-                out_ptr.write(QOI_OP_RGBA);
-                (out_ptr.add(1) as *mut u32).write(pixel);
-                out_ptr = out_ptr.add(5);
+                output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);
             }
             hia[hash as usize] = pixel;
             *previous_pixel = pixel;
@@ -162,8 +161,7 @@ fn encode_singles(
                 _pext_u32(correct_order, 0x03030300) as u8
             };
             unsafe {
-                out_ptr.write(packed_result | QOI_OP_DIFF);
-                out_ptr = out_ptr.add(1);
+                output_ptr = output_ptr.push_var(packed_result | QOI_OP_DIFF);
             }
             hia[hash as usize] = pixel;
             *previous_pixel = pixel;
@@ -181,6 +179,7 @@ fn encode_singles(
             let dg = _mm_broadcastb_epi8(rotated_deltas);
             _mm_mask_sub_epi8(rotated_deltas, 0b1010, rotated_deltas, dg)
         };
+
         let (biased_deltas_luma, comparison) = unsafe {
             let bias_luma = _mm_cvtsi32_si128(i32::from_be_bytes([8, 0, 8, 32]));
             let limit_luma = _mm_add_epi8(bias_luma, bias_luma);
@@ -192,6 +191,7 @@ fn encode_singles(
             //          comparison.reverse_bits());
             (biased_deltas_luma, comparison)
         };
+
         if comparison == 0b1011 {
             // println!("This pixel is encodable as a LUMA");
             // each channel is under the limit
@@ -203,22 +203,20 @@ fn encode_singles(
             };
             let op_luma = dg_db | QOI_OP_LUMA as u16 | (dr << 4);
             unsafe {
-                (out_ptr as *mut u16).write(op_luma);
-                out_ptr = out_ptr.add(2);
+                output_ptr = output_ptr.push_var(op_luma)
             }
         } else {
             // println!("This pixel is encodable with a RGB");
             let op_rgb = pixel << 8 | QOI_OP_RGB as u32;
             // println!("{:02x?}, {:08x}", op_rgb.to_le_bytes(), op_rgb);
             unsafe {
-                (out_ptr as *mut u32).write(op_rgb);
-                out_ptr = out_ptr.add(4);
+                output_ptr = output_ptr.push_var(op_rgb);
             }
         }
         hia[hash as usize] = pixel;
         *previous_pixel = pixel;
     }
-    unsafe { output_bytes.set_len(out_ptr.offset_from(output_bytes.as_ptr()) as usize) }
+    unsafe { output_bytes.set_len_from_ptr(output_ptr) }
     // println!("{:02x?}", output_bytes);
     // panic!("whoopsie");
     return maybe_run_length;
@@ -238,14 +236,16 @@ unsafe fn encode_chunks(
         end: chunk_pointer_max,
     } = pixels.as_ptr_range();
 
-    output_bytes.reserve(pixels.len() * 2);
-    // dbg!(chunk_pointer_max.offset_from(chunk_pointer));
+    let mut output_ptr = output_bytes.get_write_head();
+
     'chunked_encode: // assume all chunks are aligned
     while chunk_pointer < chunk_pointer_max {
         // dereferencing chunks in this way should mean the pixels are only read once per encode.
         let mut rotation = 0u8;
         let mut chunk: __m512i;
         chunk = *chunk_pointer;
+
+        // println!("len {} cap {}, off {}", output_bytes.len(), output_bytes.capacity(), output_bytes.ptr_origin_distance(output_ptr));
 
         if let Some(run_length) = maybe_run_length.as_mut() {
             'traverse_run: // loop to continue handling a run
@@ -256,7 +256,8 @@ unsafe fn encode_chunks(
                 let bits = mask.trailing_ones();
                 *run_length += bits as usize;
                 if bits < 16 {
-                    write_run(output_bytes, *run_length / 62, *run_length % 62);
+                    output_bytes.set_len_from_ptr(output_ptr);
+                    output_ptr = maybe_write_run(output_bytes, maybe_run_length);
 
                     // Since we can't rotate by a variable value, we use compress and expand instead
                     let shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bits, chunk);
@@ -274,7 +275,9 @@ unsafe fn encode_chunks(
             }
         }
 
+        output_bytes.set_len_from_ptr(output_ptr);
         output_bytes.reserve(5*16); // maximum non-run capacity necessary
+        output_ptr = output_bytes.get_write_head(); // reset in case reserve reallocates
 
         let hash_multipliers: __m512i = _mm512_set1_epi32(i32::from_le_bytes([3, 5, 7, 11]));
         let half_done = _mm512_maddubs_epi16(chunk, hash_multipliers);
@@ -293,21 +296,26 @@ unsafe fn encode_chunks(
                 // pixel of a chunk, so we need to take that into account.
                 let broadcasted_compare = _mm512_set1_epi32(*previous_pixel as i32);
                 let mask = _mm512_cmpeq_epu32_mask(chunk, broadcasted_compare);
-                let (bits, possibly_more) = run_length(mask, rotation);
+                let (bit_count, possibly_more) = run_length(mask, rotation);
                 if possibly_more {
-                    maybe_run_length = Some(bits);
+                    maybe_run_length = Some(bit_count);
                     break 'chunk_rotation;
                 } else {
                     // there will at most be 15
-                    write_run(output_bytes, 0, bits);
-                    let chunk_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bits, chunk);
-                    chunk = _mm512_mask_expand_epi32(chunk_shifted_left, !(u16::MAX >> bits), chunk);
+                    output_bytes.set_len_from_ptr(output_ptr);
+                    // output_bytes.reserve(1);
+                    write_run(output_ptr, 0, bit_count);
+                    output_bytes.add_len(1);
+                    output_ptr = output_bytes.get_write_head(); // reset instead of increment in case of reallocation
+
+                    let chunk_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bit_count, chunk);
+                    chunk = _mm512_mask_expand_epi32(chunk_shifted_left, !(u16::MAX >> bit_count), chunk);
 
                     // Since we can't rotate by a variable value, we use compress and expand instead
-                    let hashes_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bits, hashes_32b);
-                    hashes_32b = _mm512_mask_expand_epi32(hashes_shifted_left, !(u16::MAX >> bits), hashes_32b);
+                    let hashes_shifted_left = _mm512_maskz_compress_epi32(u16::MAX << bit_count, hashes_32b);
+                    hashes_32b = _mm512_mask_expand_epi32(hashes_shifted_left, !(u16::MAX >> bit_count), hashes_32b);
 
-                    rotation += bits as u8;
+                    rotation += bit_count as u8;
                     continue 'chunk_rotation;
                 }
 
@@ -316,7 +324,7 @@ unsafe fn encode_chunks(
             let hash = _mm512_cvtsi512_si32(hashes_32b) as usize;
 
             if pixel == hia[hash] {
-                output_bytes.push(hash as u8 | QOI_OP_INDEX);
+                output_ptr = output_ptr.push_var(hash as u8 | QOI_OP_INDEX);
                 // skip the chaos below and move on
                 *previous_pixel = pixel;
                 chunk = _mm512_alignr_epi32::<1>(chunk, chunk);
@@ -327,9 +335,8 @@ unsafe fn encode_chunks(
             'encoding_attempt: {
                 if is_alpha_different(pixel, *previous_pixel) {
                     // all the other methods count on the alpha being the same, so we can't do much else
-                    output_bytes.push(QOI_OP_RGBA);
-                    output_bytes.extend(pixel.to_le_bytes());
-                    break 'encoding_attempt;
+                    output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);
+                    break 'encoding_attempt; // do all the common stuff before moving on
                 }
 
                 // try to encode with an OP_DIFF
@@ -351,7 +358,7 @@ unsafe fn encode_chunks(
                     let correct_order = biased_delta.swap_bytes(); // because it's encoded weird
                     let packed_result = _pext_u32(correct_order, 0x03030300) as u8;
 
-                    output_bytes.push(packed_result | QOI_OP_DIFF);
+                    output_ptr = output_ptr.push_var(packed_result | QOI_OP_DIFF);
                     break 'encoding_attempt;
                 }
 
@@ -378,14 +385,14 @@ unsafe fn encode_chunks(
                     let dr = _mm_extract_epi16::<1>(biased_deltas_luma) as u16;
 
                     let op_luma = dg_db | QOI_OP_LUMA as u16 | (dr << 4);
-                    output_bytes.extend(op_luma.to_le_bytes());
+
+                    output_ptr = output_ptr.push_var(op_luma);
                     break 'encoding_attempt;
 
                 }
 
                 let op_rgb = pixel << 8 | QOI_OP_RGB as u32;
-                output_bytes.extend(op_rgb.to_le_bytes());
-
+                output_ptr = output_ptr.push_var(op_rgb);
             }
 
             hia[hash] = pixel;
@@ -398,6 +405,7 @@ unsafe fn encode_chunks(
 
         chunk_pointer = chunk_pointer.add(1);
     }
+    output_bytes.set_len_from_ptr(output_ptr);
     return maybe_run_length;
 }
 
@@ -430,32 +438,77 @@ const fn hash_rgba(pixel: RGBA) -> HASH {
 }
 
 #[inline(always)]
-fn maybe_write_run(output_bytes: &mut Vec<u8>, maybe_run_length: Option<usize>) -> *mut u8 {
+/// # Safety
+/// Assumes the length of the output bytes matches where the last bytes were written.
+/// Handles its own allocation.
+unsafe fn maybe_write_run(output_bytes: &mut Vec<u8>, maybe_run_length: Option<usize>) -> *mut u8 {
     if let Some(run_length) = maybe_run_length {
         let full_runs = run_length / 62;
-        write_run(output_bytes, full_runs, run_length % 62)
+        output_bytes.reserve(full_runs + 1);
+        let extra_len = write_run(output_bytes.get_write_head(), full_runs, run_length % 62);
+        output_bytes.add_len(extra_len);
     }
-    unsafe { output_bytes.as_mut_ptr().add(output_bytes.len()) }
+    output_bytes.get_write_head()
 }
 
 #[inline(always)]
-fn write_run(output_bytes: &mut Vec<u8>, full_runs: usize, remainder: usize) {
-    let rem_op = QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN);
-
+/// Writes an OP_RUN to the memory address given.
+/// Returns the number of bytes written.
+/// # Safety
+/// Assumes that allocation and length handling is handled outside of the function. This must be
+/// handled outside of the function.
+unsafe fn write_run(output_ptr: *mut u8, full_runs: usize, remainder: usize) -> usize {
     if full_runs > 0 {
-        output_bytes.reserve_exact(full_runs);
-        unsafe {
-            output_bytes
-                .as_mut_ptr()
-                .add(output_bytes.len())
-                .write_bytes(0xfdu8, full_runs);
-            output_bytes.set_len(output_bytes.len() + full_runs);
-        }
-        if remainder != 0 {
-            output_bytes.push(rem_op);
-        }
-    } else {
-        debug_assert_ne!(remainder, 0, "Somehow this got called on a run of 0");
-        output_bytes.push(rem_op);
+        output_ptr.write_bytes(0xfdu8, full_runs);
+    }
+
+    let remainder_exists = remainder > 0;
+    if remainder_exists {
+        output_ptr
+            .add(full_runs)
+            .write(QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN));
+    }
+    debug_assert_ne!(full_runs + remainder, 0, "RUN called on no actual stuff");
+    full_runs + remainder_exists as usize
+}
+
+trait Util<T: Sized> {
+    unsafe fn get_write_head(&mut self) -> *mut T;
+    unsafe fn add_len(&mut self, additional: usize);
+    unsafe fn ptr_origin_distance(&self, other_ptr: *const T) -> isize;
+    unsafe fn set_len_from_ptr(&mut self, end_ptr: *const T);
+}
+
+impl<T: Sized> Util<T> for Vec<T> {
+    #[inline(always)]
+    unsafe fn get_write_head(&mut self) -> *mut T {
+        self.as_mut_ptr().add(self.len())
+    }
+
+    #[inline(always)]
+    unsafe fn add_len(&mut self, additional: usize) {
+        self.set_len(self.len() + additional);
+    }
+
+    #[inline(always)]
+    unsafe fn ptr_origin_distance(&self, other_ptr: *const T) -> isize {
+        other_ptr.offset_from(self.as_ptr())
+    }
+
+    #[inline(always)]
+    unsafe fn set_len_from_ptr(&mut self, end_ptr: *const T) {
+        self.set_len(self.ptr_origin_distance(end_ptr) as usize)
+    }
+}
+
+trait NoPushByteWrite {
+    unsafe fn push_var<T: Sized>(self, val: T) -> Self;
+}
+
+impl NoPushByteWrite for *mut u8 {
+    #[inline(always)]
+    unsafe fn push_var<T: Sized>(self, val: T) -> Self {
+        (self as *mut T).write_unaligned(val);
+        self.add(core::mem::size_of::<T>())
     }
 }

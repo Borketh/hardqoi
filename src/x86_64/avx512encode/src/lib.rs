@@ -102,11 +102,13 @@ fn encode_singles(
         }
 
         let hash = hash_rgba(pixel);
+        // no checks are necessary because the hashes are masked to be < 64
+        let hash_index = unsafe { hia.get_unchecked_mut(hash as usize) };
 
-        if pixel == hia[hash as usize] {
+        if pixel == *hash_index {
             unsafe {
                 output_ptr = output_ptr.push_var(hash | QOI_OP_INDEX);
-                previous_pixel = &hia[hash as usize];
+                previous_pixel = hash_index;
             }
             continue 'encoding_next_pixel;
         }
@@ -117,8 +119,8 @@ fn encode_singles(
             unsafe {
                 output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);
             }
-            hia[hash as usize] = pixel;
-            previous_pixel = &hia[hash as usize];
+            *hash_index = pixel;
+            previous_pixel = hash_index;
             continue 'encoding_next_pixel;
         }
 
@@ -147,8 +149,8 @@ fn encode_singles(
             unsafe {
                 output_ptr = output_ptr.push_var(packed_result | QOI_OP_DIFF);
             }
-            hia[hash as usize] = pixel;
-            previous_pixel = &hia[hash as usize];
+            *hash_index = pixel;
+            previous_pixel = hash_index;
 
             continue 'encoding_next_pixel;
         }
@@ -190,8 +192,8 @@ fn encode_singles(
                 output_ptr = output_ptr.push_var(op_rgb);
             }
         }
-        hia[hash as usize] = pixel;
-        previous_pixel = &hia[hash as usize];
+        *hash_index = pixel;
+        previous_pixel = hash_index;
     }
     unsafe { output_bytes.set_len_from_ptr(output_ptr) }
 
@@ -296,11 +298,13 @@ unsafe fn encode_chunks(
             }
 
             let hash = _mm512_cvtsi512_si32(hashes_32b) as usize;
+            // no checks are necessary because the hashes are masked to be < 64
+            let hash_index = hia.get_unchecked_mut(hash);
 
-            if pixel == hia[hash] {
+            if pixel == *hash_index {
                 output_ptr = output_ptr.push_var(hash as u8 | QOI_OP_INDEX);
                 // skip the chaos below and move on
-                previous_pixel = &hia[hash];
+                previous_pixel = hash_index;
                 chunk = _mm512_alignr_epi32::<1>(chunk, chunk);
                 hashes_32b = _mm512_alignr_epi32::<1>(hashes_32b, hashes_32b);
                 rotation += 1;
@@ -369,8 +373,8 @@ unsafe fn encode_chunks(
                 output_ptr = output_ptr.push_var(op_rgb);
             }
 
-            hia[hash] = pixel;
-            previous_pixel = &hia[hash];
+            *hash_index = pixel;
+            previous_pixel = hash_index;
             chunk = _mm512_alignr_epi32::<1>(chunk, chunk);
             hashes_32b = _mm512_alignr_epi32::<1>(hashes_32b, hashes_32b);
 

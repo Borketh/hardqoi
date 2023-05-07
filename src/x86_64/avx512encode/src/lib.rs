@@ -18,37 +18,29 @@ pub fn encode(
 ) -> Result<(), (usize, usize)> {
     debug_assert_eq!(input_pixels.len(), metadata.image_size());
 
-    let mut previous_pixel: RGBA = 0xff000000u32;
+    let mut previous_pixel: *const RGBA = &0xff000000u32;
     let mut hia = [0; 64];
-    //hia[hash_rgba(previous_pixel) as usize] = previous_pixel;
+    let mut maybe_run_length: Option<usize> = None;
 
     let (unaligned_start, aligned_pixels, unaligned_end) =
         unsafe { input_pixels.align_to::<__m512i>() };
 
     output_bytes.extend(metadata.to_bytes());
 
-    // dbg!(
-    //     unaligned_start.len(),
-    //     aligned_pixels.len() * 16,
-    //     unaligned_end.len()
-    // );
-
-    let mut maybe_run_length: Option<usize> = None;
-
     if !unaligned_start.is_empty() {
-        maybe_run_length = encode_singles(
+        (maybe_run_length, previous_pixel) = encode_singles(
             unaligned_start,
-            &mut previous_pixel,
+            previous_pixel,
             &mut hia,
             output_bytes,
             maybe_run_length,
         );
     }
 
-    maybe_run_length = unsafe {
+    (maybe_run_length, previous_pixel) = unsafe {
         encode_chunks(
             aligned_pixels,
-            &mut previous_pixel,
+            previous_pixel,
             &mut hia,
             output_bytes,
             maybe_run_length,
@@ -56,9 +48,9 @@ pub fn encode(
     };
 
     if !unaligned_end.is_empty() {
-        maybe_run_length = encode_singles(
+        (maybe_run_length, _) = encode_singles(
             unaligned_end,
-            &mut previous_pixel,
+            previous_pixel,
             &mut hia,
             output_bytes,
             maybe_run_length,
@@ -77,11 +69,11 @@ pub fn encode(
 // The most this will encode is 15 at any given time, so optimizing here isn't really useful.
 fn encode_singles(
     pixels: &[RGBA],
-    previous_pixel: &mut RGBA,
+    mut previous_pixel: *const RGBA,
     hia: &mut [RGBA; 64],
     output_bytes: &mut Vec<u8>,
     mut maybe_run_length: Option<usize>,
-) -> Option<usize> {
+) -> (Option<usize>, *const RGBA) {
     // temporary write space with enough space for 15 OP_RGBAs in case an image is that stubborn
     output_bytes.reserve_exact(15 * 5);
     let mut output_ptr = unsafe { output_bytes.get_write_head() };
@@ -89,7 +81,7 @@ fn encode_singles(
     'encoding_next_pixel: // this label is just for clarity
     for &pixel in pixels {
         // dbg!(pixel.to_le_bytes());
-        if pixel == *previous_pixel {
+        if pixel == unsafe {*previous_pixel} {
             // Start or continue a run.
             *maybe_run_length.get_or_insert(0) += 1;
             // println!("This pixel is the same as the previous pixel ({:?})", (*previous_pixel).to_ne_bytes());
@@ -110,21 +102,23 @@ fn encode_singles(
         }
 
         let hash = hash_rgba(pixel);
+
         if pixel == hia[hash as usize] {
             unsafe {
                 output_ptr = output_ptr.push_var(hash | QOI_OP_INDEX);
+                previous_pixel = &hia[hash as usize];
             }
-            *previous_pixel = pixel;
             continue 'encoding_next_pixel;
         }
 
-        if is_alpha_different(pixel, *previous_pixel) {
+
+        if is_alpha_different(pixel, unsafe {*previous_pixel}) {
             // all the other methods count on the alpha being the same, so we can't do much else
             unsafe {
                 output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);
             }
             hia[hash as usize] = pixel;
-            *previous_pixel = pixel;
+            previous_pixel = &hia[hash as usize];
             continue 'encoding_next_pixel;
         }
 
@@ -154,7 +148,7 @@ fn encode_singles(
                 output_ptr = output_ptr.push_var(packed_result | QOI_OP_DIFF);
             }
             hia[hash as usize] = pixel;
-            *previous_pixel = pixel;
+            previous_pixel = &hia[hash as usize];
 
             continue 'encoding_next_pixel;
         }
@@ -197,22 +191,22 @@ fn encode_singles(
             }
         }
         hia[hash as usize] = pixel;
-        *previous_pixel = pixel;
+        previous_pixel = &hia[hash as usize];
     }
     unsafe { output_bytes.set_len_from_ptr(output_ptr) }
 
-    return maybe_run_length;
+    return (maybe_run_length, previous_pixel);
 }
 
 #[inline(never)]
 #[allow(clippy::needless_return)]
 unsafe fn encode_chunks(
     pixels: &[__m512i],
-    previous_pixel: &mut RGBA,
+    mut previous_pixel: *const RGBA,
     hia: &mut [RGBA; 64],
     output_bytes: &mut Vec<u8>,
     mut maybe_run_length: Option<usize>,
-) -> Option<usize> {
+) -> (Option<usize>, *const RGBA) {
     let Range {
         start: mut chunk_pointer,
         end: chunk_pointer_max,
@@ -306,7 +300,7 @@ unsafe fn encode_chunks(
             if pixel == hia[hash] {
                 output_ptr = output_ptr.push_var(hash as u8 | QOI_OP_INDEX);
                 // skip the chaos below and move on
-                *previous_pixel = pixel;
+                previous_pixel = &hia[hash];
                 chunk = _mm512_alignr_epi32::<1>(chunk, chunk);
                 hashes_32b = _mm512_alignr_epi32::<1>(hashes_32b, hashes_32b);
                 rotation += 1;
@@ -376,7 +370,7 @@ unsafe fn encode_chunks(
             }
 
             hia[hash] = pixel;
-            *previous_pixel = pixel;
+            previous_pixel = &hia[hash];
             chunk = _mm512_alignr_epi32::<1>(chunk, chunk);
             hashes_32b = _mm512_alignr_epi32::<1>(hashes_32b, hashes_32b);
 
@@ -386,7 +380,7 @@ unsafe fn encode_chunks(
         chunk_pointer = chunk_pointer.add(1);
     }
     output_bytes.set_len_from_ptr(output_ptr);
-    return maybe_run_length;
+    return (maybe_run_length, previous_pixel);
 }
 
 #[inline]

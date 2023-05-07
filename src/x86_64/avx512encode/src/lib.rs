@@ -442,17 +442,20 @@ unsafe fn write_run(output_ptr: *mut u8, full_runs: usize, remainder: usize) -> 
         core::arch::asm!(
             "cld",
             "rep stosb",
-            in("rcx") full_runs,
-            in("rdi") output_ptr,
+            // these MUST be inout => _ because evil shenanigans happen when you don't clobber them
+            inout("rcx") full_runs => _,
+            inout("rdi") output_ptr => _,
             in("al") 0xfdu8,
+            options(nostack)
         );
     }
 
     let remainder_exists = remainder > 0;
     if remainder_exists {
+        let rem_op = QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN);
         output_ptr
             .add(full_runs)
-            .write(QOI_OP_RUN | ((remainder as u8).wrapping_sub(1) & !QOI_OP_RUN));
+            .write(rem_op);
     }
     debug_assert_ne!(full_runs + remainder, 0, "RUN called on no actual stuff");
     full_runs + remainder_exists as usize

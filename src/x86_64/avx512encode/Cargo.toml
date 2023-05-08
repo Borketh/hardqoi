@@ -13,6 +13,8 @@ default-features = false
 [dev-dependencies]
 bytemuck = "^1.10.0"
 image = "^0.24.2"
+qoi_rs = "0.1.1"
+rapid-qoi = "0.6.1"
 
 [dev-dependencies.hardqoi]
 path = "../../../../hardqoi"

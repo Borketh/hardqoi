@@ -14,6 +14,12 @@ raw-cpuid = "11.0.0"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 # avx512encode = {package = "hardqoi-avx512encode", path = "src/x86_64/avx512encode", optional = true}
 
+[dev-dependencies]
+bytemuck = "^1.10.0"
+image = "^0.24.2"
+qoi_rs = "0.1.1"
+rapid-qoi = "0.6.1"
+
 [features]
 default = ["image_compat"]
 image_compat = ["dep:image"]

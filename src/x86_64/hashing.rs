@@ -134,10 +134,10 @@ pub fn hash_rgba(pixel: &RGBA) -> HASH {
     let pixel = *pixel as u64;
 
     // the first two lines do the same as rapid-qoi
-    let duplicated = pixel * 0x0000000100000001_u64;
+    let duplicated = pixel.wrapping_mul(0x0000000100000001_u64);
     let a0g00b0r = duplicated & 0xff00ff0000ff00ff_u64;
     // this magic number puts the hash in the top 6 bits instead of the top 8
-    let hash_high6 = a0g00b0r * 0x0c001c000014002c_u64;
+    let hash_high6 = a0g00b0r.wrapping_mul(0x0c001c000014002c_u64);
     let hash = hash_high6 >> 58; // now there's no need for the last mask
 
     hash as HASH

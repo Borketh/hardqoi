@@ -6,7 +6,7 @@ use crate::common::{
     QOIHeader, END_8, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN,
     RGBA,
 };
-use core::hint::unreachable_unchecked;
+
 
 const RGBA_CHA_CHA: u128 = 0x80808080_0d0c0b0a_08070605_03020100_u128;
 const DIFF_MUL_DUP: u32 = 0x01004010_u32;
@@ -91,6 +91,7 @@ impl<'ed> DecodeContext<'ed> {
     pub(crate) unsafe fn load_some_rgba(&mut self) {
         self.input_position += 1;
         // look ahead to see if there are multiple
+
         if self.get_byte_with_offset(4) == QOI_OP_RGBA {
             // whether there are two or three, it still helps to move them together
             let theres_three_actually = self.get_byte_with_offset(9) == QOI_OP_RGBA;
@@ -302,6 +303,11 @@ impl<'ed> DecodeContext<'ed> {
     }
 }
 
+const QOI_OP_INDEX_MAX: u8 = QOI_OP_DIFF - 1;
+const QOI_OP_DIFF_MAX: u8 = QOI_OP_LUMA - 1;
+const QOI_OP_LUMA_MAX: u8 = QOI_OP_RUN - 1;
+const QOI_OP_RUN_MAX: u8 = QOI_OP_RGB - 1;
+
 #[inline(never)]
 pub fn decode(input: &Vec<u8>, output: &mut Vec<RGBA>) -> Result<(), (usize, usize)> {
     let header = QOIHeader::from(input.as_slice());
@@ -320,30 +326,16 @@ pub fn decode(input: &Vec<u8>, output: &mut Vec<RGBA>) -> Result<(), (usize, usi
     while ctx.input_position < len {
         let next_op: u8 = ctx.get_byte();
 
-        match next_op {
-            QOI_OP_RGBA => unsafe {
-                ctx.load_some_rgba();
-            },
-            QOI_OP_RGB => unsafe {
-                ctx.load_one_rgb();
-            },
-            // it turns out that the compiler can make this into a LUT without me manually doing so
-            _ => match next_op & 0b11000000 {
-                QOI_OP_DIFF => unsafe {
-                    ctx.load_diff();
-                },
-                QOI_OP_LUMA => unsafe {
-                    ctx.load_one_luma();
-                },
-                QOI_OP_RUN => unsafe {
-                    ctx.load_run();
-                },
-                QOI_OP_INDEX => unsafe {
-                    ctx.load_index();
-                },
-                _ => unsafe { unreachable_unchecked() },
-            },
-        } // end match 8-bit
+        unsafe {
+            match next_op {
+                QOI_OP_INDEX..=QOI_OP_INDEX_MAX => ctx.load_index(),
+                QOI_OP_DIFF..=QOI_OP_DIFF_MAX => ctx.load_diff(),
+                QOI_OP_LUMA..=QOI_OP_LUMA_MAX => ctx.load_one_luma(),
+                QOI_OP_RUN..=QOI_OP_RUN_MAX => ctx.load_run(),
+                QOI_OP_RGB => ctx.load_one_rgb(),
+                QOI_OP_RGBA => ctx.load_some_rgba(),
+            };
+        }; // end match 8-bit
     } // end loop
 
     let pos = ctx.pos();

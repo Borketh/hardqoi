@@ -9,7 +9,7 @@ mod v2;
 mod v3;
 #[cfg(target_feature = "avxvnni")]
 mod v3n;
-#[cfg(target_feature = "avx512bw")]
+#[cfg(all(target_feature = "avx512bw", not(feature = "experimental")))]
 mod v4;
 #[cfg(target_feature = "avx512vnni")]
 mod v4n;
@@ -85,7 +85,7 @@ pub(crate) fn get_hashing_function() -> Box<dyn VectorizedHashing> {
             return Box::new(AVX);
         }
     }
-    // if the extended features struct can't be obtained or none of the mathods from above returned,
+    // if the extended features struct can't be obtained or none of the methods from above returned,
     // try to see if the processor at least supports ssse3
     #[cfg(target_feature = "ssse3")]
     if let Some(features) = cpuid.get_feature_info() {

@@ -1,5 +1,6 @@
-use super::VectorizedHashing;
 use core::arch::asm;
+
+use super::VectorizedHashing;
 
 pub(crate) struct SSSE3;
 

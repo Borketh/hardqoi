@@ -1,12 +1,12 @@
 use alloc::vec::Vec;
 use core::arch::asm;
 
-use super::hashing::Hashing;
 use crate::common::{
     QOIHeader, END_8, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN,
     RGBA,
 };
 
+use super::hashing::Hashing;
 
 const RGBA_CHA_CHA: u128 = 0x80808080_0d0c0b0a_08070605_03020100_u128;
 const DIFF_MUL_DUP: u32 = 0x01004010_u32;
@@ -296,9 +296,9 @@ impl<'ed> DecodeContext<'ed> {
     pub(crate) unsafe fn load_index(&mut self) {
         self.update_hia();
         self.last_hash_update = self.output_buffer.len();
-        let index = self.get_byte() & 0x3f;
         self.update_previous_ptr();
-        self.output_buffer.push(self.hash_index_array.fetch(index));
+        self.output_buffer
+            .push(*self.hash_index_array.fetch(self.get_byte()));
         self.input_position += 1;
     }
 }

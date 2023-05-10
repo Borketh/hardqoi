@@ -1,12 +1,12 @@
 extern crate bytemuck;
 extern crate image;
 
-use bytemuck::cast_slice;
 use std::io::Write;
 use std::ops::Div;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use bytemuck::cast_slice;
 use image::{io::Reader, DynamicImage, ImageFormat};
 
 use hardqoi::common::*;
@@ -114,7 +114,6 @@ fn compete_qoi_rs(png_path: &str) {
     let decode_duration = decode_time_start.elapsed();
     println!("qoi_rs decode time: {decode_duration:?}");
 
-
     // let qoi_path = png_path.replace("png", "qoi");
     // let reference_qoi = std::fs::read(qoi_path).unwrap().into_boxed_slice();
 
@@ -122,12 +121,12 @@ fn compete_qoi_rs(png_path: &str) {
 }
 
 fn compete_rapidqoi(png_path: &str) {
-    use rapid_qoi::{Qoi, Colors};
+    use rapid_qoi::{Colors, Qoi};
     let png_pixels = image::open(png_path).unwrap().into_rgba8();
     let qoi_meta = Qoi {
         width: png_pixels.width(),
         height: png_pixels.height(),
-        colors: Colors::Rgba
+        colors: Colors::Rgba,
     };
     let raw = png_pixels.into_raw();
 

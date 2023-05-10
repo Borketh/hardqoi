@@ -1,5 +1,7 @@
-use super::VectorizedHashing;
 use core::arch::asm;
+
+use super::VectorizedHashing;
+
 const HASH_MULTIPLIER_RGBA: u32 = 0x0b070503u32;
 
 pub(crate) struct AVX512VNNI;

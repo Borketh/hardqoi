@@ -1,5 +1,7 @@
-use super::VectorizedHashing;
 use core::arch::asm;
+
+use super::VectorizedHashing;
+
 // TODO: Find a way to actually make this faster than AVX
 const RGBA_ARGB_SHUFFLE: [u8; 16] = [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14];
 const HASH_MULTIPLIER_RGBA: u32 = 0x0b070503u32;

@@ -1,7 +1,10 @@
-use super::hashing::hash_rgba;
-use crate::common::RGBA;
 use alloc::boxed::Box;
+
 use lazy_static::lazy_static;
+
+use crate::common::RGBA;
+
+use super::hashing::hash_rgba;
 
 #[cfg(target_feature = "ssse3")]
 mod v2;

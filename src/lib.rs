@@ -4,6 +4,9 @@
 extern crate alloc;
 extern crate bytemuck;
 
+pub use arch_switch::implementation::{decode::decode, encode::encode};
+use common::*;
+
 #[path = "./arch_switch.rs"]
 mod arch_switch;
 pub use arch_switch::implementation::{decode::decode, encode::encode};

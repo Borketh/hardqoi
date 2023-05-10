@@ -1,5 +1,7 @@
-use super::VectorizedHashing;
 use core::arch::asm;
+
+use super::VectorizedHashing;
+
 const HASH_MULTIPLIER_RGBA: u32 = 0x0b070503;
 
 const MASK_64: u32 = 0x003f; // should be u16 but broadcast only takes r or e regs

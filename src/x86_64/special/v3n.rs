@@ -1,5 +1,7 @@
-use super::{VectorizedHashing, HASH_MULTIPLIER_RGBA};
 use core::arch::asm;
+
+use super::{VectorizedHashing, HASH_MULTIPLIER_RGBA};
+
 const MOVQB_REPLACEMENT: [u8; 16] = [
     0, 4, 8, 12, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
 ];

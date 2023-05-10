@@ -1,12 +1,13 @@
-static MOD64MASK: u64 = 0x003f003f003f003fu64;
-static HASHING_NUMS_RGBA: u64 = 0x0b0705030b070503u64;
-
-use crate::common::{HASH, RGBA};
-pub(crate) use crate::Hashing;
 use alloc::vec::Vec;
 use core::arch::asm;
 
+use crate::common::{HASH, RGBA};
+pub(crate) use crate::Hashing;
+
 use super::HASH_RGBA_MANY;
+
+static MOD64MASK: u64 = 0x003f003f003f003fu64;
+static HASHING_NUMS_RGBA: u64 = 0x0b0705030b070503u64;
 
 impl Hashing for [RGBA; 64] {
     fn update(&mut self, pixel_feed: &[RGBA]) {

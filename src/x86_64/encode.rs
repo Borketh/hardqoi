@@ -1,12 +1,14 @@
-use super::HASH_RGBA_MANY;
+use alloc::vec::Vec;
+use core::arch::asm;
+use core::mem::replace;
+
+use crate::arch_switch::implementation::hashing::hash_rgba;
 use crate::common::{
     QOIHeader, END_8, HASH, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
     QOI_OP_RUN, RGBA,
 };
-use alloc::vec::Vec;
-use core::arch::asm;
-use core::mem::replace;
-use crate::arch_switch::implementation::hashing::hash_rgba;
+
+use super::HASH_RGBA_MANY;
 
 // ed is the encoding duration
 pub(crate) struct EncodeContext<'ed> {
@@ -40,11 +42,8 @@ impl<'ed> EncodeContext<'ed> {
 
             let start_pixel_ptr = self.input_pixels.as_ptr();
             let start_hash_ptr = self.hashes.as_mut_ptr();
-            let (end_pixel_ptr, end_hash_ptr) = HASH_RGBA_MANY.hash_chunks(
-                start_pixel_ptr,
-                start_hash_ptr,
-                chunk_count,
-            );
+            let (end_pixel_ptr, end_hash_ptr) =
+                HASH_RGBA_MANY.hash_chunks(start_pixel_ptr, start_hash_ptr, chunk_count);
             let pixel_distance = end_pixel_ptr.offset_from(start_pixel_ptr);
             let hash_distance = end_hash_ptr.offset_from(start_hash_ptr);
             self.hashes.set_len(self.pixel_count);
@@ -53,7 +52,10 @@ impl<'ed> EncodeContext<'ed> {
         if leftover_pixel_marker == self.input_pixels.len() {
             return;
         }
-        for (offset, pixel) in self.input_pixels[leftover_pixel_marker..].iter().enumerate() {
+        for (offset, pixel) in self.input_pixels[leftover_pixel_marker..]
+            .iter()
+            .enumerate()
+        {
             self.hashes[end_of_current_hashes + offset] = hash_rgba(pixel);
         }
     }
@@ -123,7 +125,8 @@ impl<'ed> EncodeContext<'ed> {
             self.output_bytes.reserve_exact(full_runs);
             unsafe {
                 self.get_output_ptr().write_bytes(0xfdu8, full_runs);
-                self.output_bytes.set_len(self.output_bytes.len() + full_runs);
+                self.output_bytes
+                    .set_len(self.output_bytes.len() + full_runs);
             }
             if remainder != 0 {
                 self.output_bytes.push(rem_op);

@@ -1,14 +1,14 @@
 #![no_std]
-#![feature(stdsimd, portable_simd, repr_simd, avx512_target_feature)]
+#![feature(stdsimd, avx512_target_feature)]
 
 extern crate alloc;
 
 use alloc::vec::Vec;
 use core::arch::x86_64::*;
-use core::ops::Range;
+
+use common::{NoPushByteWrite, Util};
 use hardqoi::common::{
-    QOIHeader, END_8, HASH, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA,
-    QOI_OP_RUN, RGBA,
+    END_8, QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOIHeader, RGBA,
 };
 
 pub fn encode(

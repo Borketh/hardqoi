@@ -20,19 +20,23 @@ impl Hashing for [RGBA; 64] {
                 pixel_feed
                     .iter()
                     .zip(hashes_rgba(pixel_feed).iter())
-                    .for_each(|(&pixel, &hash)| self[hash as usize] = pixel);
+                    .for_each(|(&pixel, &hash)| *unsafe { self.fetch_mut(hash) } = pixel);
             }
         };
     }
 
-    fn fetch(&mut self, hash: HASH) -> RGBA {
-        self[hash as usize]
+    unsafe fn fetch(&self, hash: HASH) -> &RGBA {
+        self.get_unchecked(hash as usize)
+    }
+
+    unsafe fn fetch_mut(&mut self, hash: HASH) -> &mut RGBA {
+        self.get_unchecked_mut(hash as usize)
     }
 
     #[inline(always)]
     fn swap(&mut self, pixel: &RGBA) -> (RGBA, HASH) {
         let hash = hash_rgba(pixel);
-        let pixel2 = core::mem::replace(&mut self[hash as usize], *pixel);
+        let pixel2 = core::mem::replace(unsafe { self.fetch_mut(hash) }, *pixel);
         (pixel2, hash)
     }
 }

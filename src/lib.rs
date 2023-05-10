@@ -9,18 +9,18 @@ use common::*;
 
 #[path = "./arch_switch.rs"]
 mod arch_switch;
-pub use arch_switch::implementation::{decode::decode, encode::encode};
-
-use common::*;
 
 pub(crate) trait Hashing {
     fn update(&mut self, pixel_feed: &[RGBA]);
-    fn fetch(&mut self, hash: HASH) -> RGBA;
+    unsafe fn fetch(&self, hash: HASH) -> &RGBA;
+    unsafe fn fetch_mut(&mut self, hash: HASH) -> &mut RGBA;
     fn swap(&mut self, pixel: &RGBA) -> (RGBA, HASH);
 }
 
 pub mod common {
     use alloc::vec::Vec;
+    use core::convert::TryInto;
+
     #[cfg(feature = "image_compat")]
     use image::{DynamicImage, GenericImageView};
 

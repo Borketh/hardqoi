@@ -4,5 +4,8 @@ Cargo.lock
 /test/stephansquintet-jameswebb-giant.png
 /test/*.qoi
 /.incremental
+
+# used for development, irritating to see on my git add list
 perf.*
 flamegraph.svg
+*.tmp.asm

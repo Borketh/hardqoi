@@ -32,8 +32,8 @@ pub unsafe fn hash_chunk_of_32_avx_vnni(
 ) -> (*const u32, *mut u8) {
     asm!(
     "vbroadcasti128 {gather},       [{movqb_ptr}]",
-    "vpbroadcastd   {multipliers},  {multiplier:e}",
-    "vpbroadcastb   {round_mask},   {byte_mask:e}",
+    "vpbroadcastd   {multipliers},  [{multiplier}]",
+    "vpbroadcastb   {round_mask},   [{byte_mask}]",
     "vpmovzxbd      {reorder},      [{reorder_ptr}]",
     "2:",
     //"# LLVM-MCA-BEGIN 32nn",
@@ -63,8 +63,8 @@ pub unsafe fn hash_chunk_of_32_avx_vnni(
     //"# LLVM-MCA-END 32nn",
     "jne 2b",
 
-    multiplier  = in(reg)   HASH_MULTIPLIER_RGBA,
-    byte_mask   = in(reg)   0x3f,
+    multiplier  = in(reg)   &HASH_MULTIPLIER_RGBA,
+    byte_mask   = in(reg)   &0x3f,
     movqb_ptr   = in(reg)   &MOVQB_REPLACEMENT,
     reorder_ptr = in(reg)   &CHUNK_REORDER,
 

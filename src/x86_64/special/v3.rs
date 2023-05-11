@@ -31,8 +31,8 @@ pub unsafe fn hash_chunk_of_32_avx(
     count: usize,
 ) -> (*const u32, *mut u8) {
     asm!(
-    "vpbroadcastd   {multipliers},  {multiplier:e}",
-    "vpbroadcastw   {round_mask},   {byte_mask:e}",
+    "vpbroadcastd   {multipliers},  [{multiplier}]",
+    "vpbroadcastw   {round_mask},   [{byte_mask}]",
     "vpmovzxbd      {reorder},      [{reorder_ptr}]",
     "2:",
     "# LLVM-MCA-BEGIN 32avx",
@@ -58,8 +58,8 @@ pub unsafe fn hash_chunk_of_32_avx(
     "cmp        {pixels_ptr},   {pixels_end_ptr}",
     "jne 2b",
 
-    multiplier  = in(reg)       HASH_MULTIPLIER_RGBA,
-    byte_mask   = in(reg)       MASK_64,
+    multiplier  = in(reg)       &HASH_MULTIPLIER_RGBA,
+    byte_mask   = in(reg)       &MASK_64,
     reorder_ptr = in(reg)       &REORDERING_INDICES,
 
     pixels_ptr  = inout(reg)    pixel_read_ptr,

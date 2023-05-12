@@ -3,6 +3,9 @@ use core::arch::x86_64::*;
 
 use hardqoi::common::{HASH, QOI_OP_RUN, RGBA};
 
+pub(crate) type Zmm = __m512i;
+pub(crate) type Xmm = __m128i;
+
 #[inline]
 pub const fn is_alpha_different<const IMAGE_HAS_ALPHA: bool>(a: u32, b: u32) -> bool {
     IMAGE_HAS_ALPHA && (a & 0xff000000) != (b & 0xff000000)
@@ -49,13 +52,13 @@ pub unsafe fn maybe_write_run(
 pub unsafe fn write_run(output_ptr: *mut u8, full_runs: usize, remainder: usize) -> usize {
     if full_runs > 0 {
         core::arch::asm!(
-            "cld",
-            "rep stosb",
-            // these MUST be inout => _ because evil shenanigans happen when you don't clobber them
-            inout("rcx") full_runs => _,
-            inout("rdi") output_ptr => _,
-            in("al") 0xfdu8,
-            options(nostack)
+        "cld",
+        "rep stosb",
+        // these MUST be inout => _ because evil shenanigans happen when you don't clobber them
+        inout("rcx") full_runs => _,
+        inout("rdi") output_ptr => _,
+        in("al") 0xfdu8,
+        options(nostack)
         );
     }
 
@@ -119,17 +122,17 @@ macro_rules! prefetch {
 
 #[macro_export]
 macro_rules! rotate {
-    [$($vec:ident),+ @ once] => {
-        $($vec = _mm512_alignr_epi32::<1>($vec, $vec);)+
+    [$($vec:ident),+ @ const $num:literal] => {
+        $($vec = _mm512_alignr_epi32::<$num>($vec, $vec);)+
     };
 
     [$($vec:ident),+ @ $amount:expr] => {
-        $($vec = _mm512_maskz_compress_epi32($amount, $vec);)+
+        $($vec = _mm512_maskz_compress_epi32(u16::MAX << $amount, $vec);)+
     };
 }
 
 #[inline]
-pub unsafe fn no_rip_bcst_u32_m512(number: u32) -> __m512i {
+pub unsafe fn no_rip_bcst_u32_m512(number: u32) -> Zmm {
     let rtn;
     core::arch::asm!(
     "vpbroadcastd {vec}, {num:e}",
@@ -140,7 +143,7 @@ pub unsafe fn no_rip_bcst_u32_m512(number: u32) -> __m512i {
 }
 
 #[inline]
-pub unsafe fn actually_kmaskz_subb_si128(k: __mmask16, a: __m128i, b: __m128i) -> __m128i {
+pub unsafe fn actually_kmaskz_subb_si128(k: __mmask16, a: Xmm, b: Xmm) -> Xmm {
     let rtn;
     core::arch::asm!(
     "vpsubb {rtn} {{{mask}}} {{z}}, {a}, {b}",
@@ -154,7 +157,7 @@ pub unsafe fn actually_kmaskz_subb_si128(k: __mmask16, a: __m128i, b: __m128i) -
 }
 
 #[inline]
-pub unsafe fn _mm512_cvtsi512_si64(v: __m512i) -> u64 {
+pub unsafe fn _mm512_cvtsi512_si64(v: Zmm) -> u64 {
     let rtn;
     core::arch::asm!(
     "vmovq {rtn}, {vec:x}",
@@ -165,13 +168,31 @@ pub unsafe fn _mm512_cvtsi512_si64(v: __m512i) -> u64 {
 }
 
 #[inline]
-pub unsafe fn xmm_of_low_dword(v: __m512i) -> __m128i {
+pub unsafe fn xmm_of_low_dword(v: Zmm) -> Xmm {
     let new;
     core::arch::asm!(
-        "vmovdqa32 {new:x} {{{one}}}, {v:x}",
-        v = in(zmm_reg) v,
-        one = in(kreg) 1,
-        new = out(xmm_reg) new
+    "vmovdqa32 {new:x} {{{one}}}, {v:x}",
+    v = in(zmm_reg) v,
+    one = in(kreg) 1,
+    new = out(xmm_reg) new
     );
     new
+}
+
+pub enum RunResult {
+    AtLeast(usize),
+    Exactly(usize),
+}
+
+#[inline]
+pub const fn run_length(mask: u16, rotation: u8) -> RunResult {
+    use RunResult::{AtLeast, Exactly};
+    let clobber_already_seen = mask << rotation;
+    if clobber_already_seen == u16::MAX << rotation {
+        AtLeast(16 - rotation as usize)
+    } else {
+        let clobbered = clobber_already_seen >> rotation;
+        let how_many = clobbered.trailing_ones();
+        Exactly(how_many as usize)
+    }
 }

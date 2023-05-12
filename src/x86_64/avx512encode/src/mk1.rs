@@ -5,16 +5,16 @@ use core::ops::Range;
 use hardqoi::common::{
     QOI_OP_DIFF, QOI_OP_INDEX, QOI_OP_LUMA, QOI_OP_RGB, QOI_OP_RGBA, QOI_OP_RUN, RGBA,
 };
-use RunResult::{AtLeast, Exactly};
 
-use crate::{BIAS_LUMA, BIAS_RGB};
 use crate::{prefetch, rotate};
+use crate::{BIAS_LUMA, BIAS_RGB, Util};
 use crate::common::*;
+use crate::common::RunResult::{AtLeast, Exactly};
 
 #[inline(never)]
 #[allow(clippy::needless_return)]
 pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
-    pixels: &[__m512i],
+    pixels: &[Zmm],
     mut previous_pixel: *const RGBA,
     hia: &mut [RGBA; 64],
     output_bytes: &mut Vec<u8>,
@@ -31,7 +31,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
     while chunk_pointer < chunk_pointer_max {
         // dereferencing chunks in this way should mean the pixels are only read once per encode.
         let mut rotation = 0u8;
-        let mut chunk: __m512i;
+        let mut chunk: Zmm;
         chunk = *chunk_pointer;
 
         if let Some(run_length) = maybe_run_length.as_mut() {
@@ -56,7 +56,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
                     output_ptr = maybe_write_run(output_bytes, maybe_run_length);
 
                     // Since we can't rotate by a variable value, we use compress instead
-                    rotate!(chunk @ u16::MAX << bits);
+                    rotate!(chunk @ bits);
 
                     rotation += bits as u8;
                     maybe_run_length = None;
@@ -66,7 +66,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
         }
 
         output_bytes.set_len_from_ptr(output_ptr);
-        output_bytes.reserve(5*16); // maximum non-run capacity necessary
+        output_bytes.reserve(5 * 16); // maximum non-run capacity necessary
         output_ptr = output_bytes.get_write_head(); // reset in case reserve reallocates
 
         let hash_multipliers = no_rip_bcst_u32_m512(u32::from_le_bytes([3, 5, 7, 11]));
@@ -78,7 +78,6 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
 
         'chunk_rotation: // read pixels directly from the chunk in a register
         while rotation < 16 {
-
             let pixel = _mm512_cvtsi512_si32(chunk) as u32;
 
             if pixel == *previous_pixel {
@@ -86,7 +85,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
                 // pixel of a chunk, so we need to take that into account.
                 if (_mm512_cvtsi512_si64(chunk) >> 32) as u32 != pixel {
                     output_ptr = output_ptr.push_var(QOI_OP_RUN);
-                    rotate!(chunk, hashes_32b @ once);
+                    rotate!(chunk, hashes_32b @ const 1);
 
                     rotation += 1;
                     continue 'chunk_rotation;
@@ -106,7 +105,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
                         output_ptr = output_ptr.add(1);
 
                         // Since we can't rotate by a variable value, we use compress instead
-                        rotate!(chunk, hashes_32b @ u16::MAX << amount);
+                        rotate!(chunk, hashes_32b @ amount);
 
                         rotation += amount as u8;
                         continue 'chunk_rotation;
@@ -122,7 +121,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
                 output_ptr = output_ptr.push_var(hash as u8 | QOI_OP_INDEX);
                 // skip the chaos below and move on
                 previous_pixel = hia.get_unchecked(hash);
-                rotate!(chunk, hashes_32b @ once);
+                rotate!(chunk, hashes_32b @ const 1);
 
                 rotation += 1;
                 continue 'chunk_rotation;
@@ -191,7 +190,7 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
 
             *hash_index = pixel;
             previous_pixel = hash_index;
-            rotate!(chunk, hashes_32b @ once);
+            rotate!(chunk, hashes_32b @ const 1);
 
             rotation += 1;
         }
@@ -200,21 +199,4 @@ pub unsafe fn encode_chunks<const IMAGE_HAS_ALPHA: bool>(
     }
     output_bytes.set_len_from_ptr(output_ptr);
     return (maybe_run_length, previous_pixel);
-}
-
-pub enum RunResult {
-    AtLeast(usize),
-    Exactly(usize),
-}
-
-#[inline]
-const fn run_length(mask: u16, rotation: u8) -> RunResult {
-    let clobber_already_seen = mask << rotation;
-    if clobber_already_seen == u16::MAX << rotation {
-        AtLeast(16 - rotation as usize)
-    } else {
-        let clobbered = clobber_already_seen >> rotation;
-        let how_many = clobbered.trailing_ones();
-        Exactly(how_many as usize)
-    }
 }

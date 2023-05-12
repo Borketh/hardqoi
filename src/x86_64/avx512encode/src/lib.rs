@@ -119,7 +119,7 @@ fn encode_singles<const IMAGE_HAS_ALPHA: bool>(
     'encoding_next_pixel: // this label is just for clarity
     for &pixel in pixels {
         // dbg!(pixel.to_le_bytes());
-        if pixel == unsafe {*previous_pixel} {
+        if pixel == unsafe { *previous_pixel } {
             // Start or continue a run.
             *maybe_run_length.get_or_insert(0) += 1;
             // println!("This pixel is the same as the previous pixel ({:?})", (*previous_pixel).to_ne_bytes());
@@ -152,7 +152,7 @@ fn encode_singles<const IMAGE_HAS_ALPHA: bool>(
         }
 
 
-        if common::is_alpha_different::<IMAGE_HAS_ALPHA>(pixel, unsafe {*previous_pixel}) {
+        if common::is_alpha_different::<IMAGE_HAS_ALPHA>(pixel, unsafe { *previous_pixel }) {
             // all the other methods count on the alpha being the same, so we can't do much else
             unsafe {
                 output_ptr = output_ptr.push_var(QOI_OP_RGBA).push_var(pixel);

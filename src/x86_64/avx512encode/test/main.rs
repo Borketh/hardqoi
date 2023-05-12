@@ -119,6 +119,7 @@ fn compete_qoi_rs(png_path: &str) {
 
     // assert_eq!(our_qoi, reference_qoi);
 }
+
 fn compete_rapidqoi(png_path: &str) {
     use rapid_qoi::{Colors, Qoi};
     let png_pixels = image::open(png_path).unwrap().into_rgba8();
@@ -144,6 +145,7 @@ fn compete_rapidqoi(png_path: &str) {
 
     // assert_eq!(our_qoi, reference_qoi);
 }
+
 #[test]
 fn test_wonke() {
     test_and_bench("../../../test/wonke.png");

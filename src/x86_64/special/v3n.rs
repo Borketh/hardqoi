@@ -62,6 +62,7 @@ pub unsafe fn hash_chunk_of_32_avx_vnni(
     "cmp        {pixels_ptr},   {pixels_end_ptr}",
     //"# LLVM-MCA-END 32nn",
     "jne 2b",
+    "sfence", // Guard the vmovntdq after the loop
 
     multiplier  = in(reg)   &HASH_MULTIPLIER_RGBA,
     byte_mask   = in(reg)   &0x3f,

@@ -348,5 +348,10 @@ pub unsafe fn hash_chunk_of_16_intrin(
         hash_ptr = hash_ptr.add(1);
     }
 
+    // Required before returning to code that may set atomic flags that invite concurrent reads,
+    // as LLVM lowers `AtomicBool::store(flag, true, Release)` to ordinary stores on x86-64
+    // instead of SFENCE, even though SFENCE is required in the presence of nontemporal stores.
+    _mm_sfence();
+
     return (pixel_ptr as *const u32, hash_ptr as *mut u8);
 }
